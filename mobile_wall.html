@@ -12,12 +12,13 @@
         }
 
         body {
-            margin: 0;
+            button: 0;
             font-family: 'Inter', system-ui;
             background: var(--bg);
             color: var(--text);
             height: 100vh;
             overflow: hidden;
+            margin: 0;
         }
 
         .wall-grid {
@@ -28,6 +29,7 @@
             gap: 2px;
             padding: 2px;
             border: 4px solid #334155;
+            box-sizing: border-box;
         }
 
         .mobile-screen {
@@ -45,6 +47,20 @@
             padding: 0.25rem;
             text-align: center;
             font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            padding-left: 0.5rem;
+            padding-right: 0.5rem;
+        }
+
+        .live-badge {
+            color: #22c55e;
+            font-size: 0.6rem;
+            opacity: 0;
+        }
+
+        .live-badge.on {
+            opacity: 1;
         }
 
         .screen-body {
@@ -66,7 +82,8 @@
             color: #444;
             font-weight: bold;
             border-radius: 4px;
-            transition: 0.3s;
+            transition: 0.2s;
+            cursor: default;
         }
 
         /* Filled State */
@@ -79,10 +96,38 @@
         .block.picking {
             background: var(--pick-color);
             color: white;
-            /* White text for quantity */
             font-size: 2rem;
             box-shadow: 0 0 15px var(--pick-color);
             z-index: 10;
+        }
+
+        /* Selectable for Inject (Pending Mode) */
+        .block.inject-ready {
+            cursor: pointer;
+            background: #1e293b;
+            color: #ccc;
+            border: 2px dashed #94a3b8;
+            animation: pulse 1.5s infinite;
+        }
+
+        .block.inject-ready:hover {
+            background: #334155;
+            border-color: white;
+            color: white;
+        }
+
+        @keyframes pulse {
+            0% {
+                border-color: #64748b;
+            }
+
+            50% {
+                border-color: #f8fafc;
+            }
+
+            100% {
+                border-color: #64748b;
+            }
         }
 
         /* Split Colors Definitions for Pick Mode */
@@ -107,15 +152,11 @@
             position: absolute;
             bottom: 5px;
             right: 5px;
-            opacity: 0;
-            transition: 0.2s;
+            display: flex;
+            gap: 5px;
         }
 
-        .mobile-screen:hover .config-overlay {
-            opacity: 1;
-        }
-
-        .btn-plus {
+        .btn-round {
             background: rgba(255, 255, 255, 0.2);
             border: 1px solid white;
             color: white;
@@ -129,13 +170,35 @@
             justify-content: center;
         }
 
-        .btn-plus:hover {
+        .btn-round:hover {
             background: rgba(255, 255, 255, 0.4);
         }
 
-        .disabled {
+        .btn-round.disabled {
             opacity: 0.3;
             cursor: not-allowed;
+        }
+
+        .btn-confirm {
+            font-size: 0.8rem;
+            width: auto;
+            padding: 0 8px;
+            border-radius: 15px;
+        }
+
+        /* Initial Setup Overlay */
+        .setup-needed {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.8rem;
+            text-align: center;
+            z-index: 20;
         }
     </style>
 </head>
@@ -146,78 +209,140 @@
         <!-- 9 Screens generated here -->
     </div>
 
-    <script>
-        // ==========================================
-        // SHARED STATE LOGIC (Duplicated for standalone)
-        // ==========================================
-        const STORE_KEY = 'PICKCART_STATE_V1';
-        const CHANNEL_NAME = 'pickcart_demo';
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+        import { getDatabase, ref, onValue, runTransaction, update } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
-        const DEFAULT_STATE = {
+        // TODO: Replace with your Firebase Config
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+            projectId: "YOUR_PROJECT",
+            storageBucket: "YOUR_PROJECT.appspot.com",
+            messagingSenderId: "SENDER_ID",
+            appId: "APP_ID"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // Get Session
+        const params = new URLSearchParams(window.location.search);
+        const SESSION_ID = params.get('session') || 'demo';
+
+        const stateRef = ref(db, `pickcart_demo/${SESSION_ID}/state`);
+
+        let localState = {
             mode: 'INJECT',
             config: { bays: 9, maxSplit: 4 },
             slots: {},
             splits: {},
-            activePick: {}
+            activePick: {},
+            injectPending: null
         };
 
-        class StateReader {
-            constructor() {
-                this.bc = new BroadcastChannel(CHANNEL_NAME);
-                this.bc.onmessage = (ev) => {
-                    if (ev.data.type === 'UPDATE' || ev.data.type === 'RESET') this.load();
-                };
-                this.load();
-            }
+        // --- Subscribe ---
+        onValue(stateRef, (snapshot) => {
+            const val = snapshot.val();
+            if (val) localState = { ...localState, ...val };
+            render();
 
-            load() {
-                try {
-                    this.state = JSON.parse(localStorage.getItem(STORE_KEY)) || DEFAULT_STATE;
-                } catch (e) { this.state = DEFAULT_STATE; }
-                render();
-            }
+            // Show Live Status
+            document.querySelectorAll('.live-badge').forEach(el => el.classList.add('on'));
+        });
 
-            updateSplit(bayId) {
-                // Allows mobile to write state for split config
-                const current = this.state.splits[bayId] || 1;
+        // --- Actions ---
+        window.actions = {
+            // 1. Split Config (Add or Confirm)
+            incrementSplit: (bayId) => {
+                const current = (localState.splits && localState.splits[bayId]) || 1;
                 if (current >= 4) return;
 
-                // Check if occupied (Requirement: Block split if occupied)
-                // Actually, requirement says "Block if ALREADY has items".
-                // If items exist in current subslots, we can't easily re-partition physically without moving them.
-                // Logic: check if any slot in this bay is filled.
-                const hasItems = Object.keys(this.state.slots).some(k => k.startsWith(`${bayId}-`));
+                // Existing item check
+                const hasItems = Object.keys(localState.slots || {}).some(k => k.startsWith(`${bayId}-`));
                 if (hasItems) {
                     alert("使用中の間口は分割できません！");
                     return;
                 }
 
-                this.state.splits[bayId] = current + 1;
-                localStorage.setItem(STORE_KEY, JSON.stringify(this.state));
-                this.bc.postMessage({ type: 'UPDATE' });
-                this.load();
-            }
-        }
+                // Using update for simple writes
+                const updates = {};
+                updates[`splits/${bayId}`] = current + 1;
+                update(stateRef, updates);
+            },
 
-        const app = new StateReader();
+            confirmSplit: (bayId) => {
+                // Confirm 1
+                const updates = {};
+                updates[`splits/${bayId}`] = 1;
+                update(stateRef, updates);
+            },
+
+            // 2. Inject Slot Selection
+            selectSlot: (bayId, subId) => {
+                if (!localState.injectPending || localState.injectPending.status !== "WAITING_SLOT") return;
+
+                const slotKey = `${bayId}-${subId}`;
+                const pendingJan = localState.injectPending.jan;
+
+                // Transaction for safety
+                runTransaction(stateRef, (currentData) => {
+                    if (currentData === null) return currentData;
+
+                    // Re-validate inside transaction
+                    if (!currentData.injectPending || currentData.injectPending.jan !== pendingJan) {
+                        return; // Pending changed/gone
+                    }
+
+                    if (currentData.slots && currentData.slots[slotKey]) {
+                        // Occupied!
+                        return; // Abort
+                    }
+
+                    // Write
+                    if (!currentData.slots) currentData.slots = {};
+                    currentData.slots[slotKey] = { sku: pendingJan };
+
+                    // Clear Pending
+                    currentData.injectPending = null;
+
+                    return currentData;
+                }).then((result) => {
+                    if (result.committed) {
+                        // Success Feedback? (Render handles it)
+                    } else {
+                        alert("他で更新されたか、条件を満たしていません");
+                    }
+                }).catch(err => console.error(err));
+            }
+        };
+
 
         function render() {
             const grid = document.getElementById('wall');
             grid.innerHTML = '';
-            const state = app.state;
 
             for (let b = 1; b <= 9; b++) {
                 const screen = document.createElement('div');
                 screen.className = 'mobile-screen';
 
                 // Header
-                screen.innerHTML = `<div class="screen-header">BAY ${b}</div>`;
+                screen.innerHTML = `
+                    <div class="screen-header">
+                        <span>BAY ${b}</span>
+                        <span class="live-badge">● LIVE</span>
+                    </div>`;
+
+                // Logic for Split State
+                // If splits[b] undefined -> Need Setup
+                const isConfigured = (localState.splits && localState.splits[b] !== undefined);
+                const splitCount = isConfigured ? localState.splits[b] : 1;
 
                 // Body
                 const body = document.createElement('div');
                 body.className = 'screen-body';
-
-                const splitCount = state.splits[b] || 1;
 
                 for (let s = 1; s <= splitCount; s++) {
                     const block = document.createElement('div');
@@ -225,37 +350,65 @@
                     block.dataset.sub = s;
 
                     const slotKey = `${b}-${s}`;
-                    const slotData = state.slots[slotKey];
-                    const pickData = state.activePick[slotKey]; // { qty: 2 }
+                    const slotData = localState.slots && localState.slots[slotKey];
+                    const pickData = localState.activePick && localState.activePick[slotKey];
 
-                    if (state.mode === 'PICK' && pickData) {
-                        // Light up!
+                    // Render Logic
+                    if (localState.mode === 'PICK' && pickData) {
+                        // Pick Mode Light
                         block.classList.add('picking');
                         block.textContent = pickData.qty;
                     } else if (slotData) {
+                        // Filled
                         block.classList.add('filled');
                         block.textContent = slotData.sku.slice(-4);
                     } else {
-                        block.textContent = s;
+                        // Empty
+                        // Check if Inject Pending -> ready to click
+                        if (localState.mode === 'INJECT' && localState.injectPending && isConfigured) {
+                            block.classList.add('inject-ready');
+                            block.textContent = "TAP";
+                            block.onclick = () => window.actions.selectSlot(b, s);
+                        } else {
+                            block.textContent = s;
+                        }
                     }
                     body.appendChild(block);
                 }
                 screen.appendChild(body);
 
-                // Config Overlay (Only in Inject Mode)
-                if (state.mode === 'INJECT') {
-                    const overlay = document.createElement('div');
-                    overlay.className = 'config-overlay';
-                    const hasItems = Object.keys(state.slots).some(k => k.startsWith(`${b}-`));
+                // Live Config Overlay (Only in Inject Msg)
+                if (localState.mode === 'INJECT') {
+                    // If not configured, show "Initial Setup" overlay
+                    if (!isConfigured) {
+                        const setup = document.createElement('div');
+                        setup.className = 'setup-needed';
+                        setup.innerHTML = `<div style="margin-bottom:5px;">未設定</div>`;
 
-                    const btn = document.createElement('div');
-                    btn.className = 'btn-plus';
-                    if (splitCount >= 4 || hasItems) btn.classList.add('disabled');
-                    btn.textContent = '+';
-                    btn.onclick = () => app.updateSplit(b);
+                        const btnOk = document.createElement('div');
+                        btnOk.className = 'btn-round btn-confirm';
+                        btnOk.textContent = '初期化(1分割)';
+                        btnOk.onclick = () => window.actions.confirmSplit(b);
 
-                    overlay.appendChild(btn);
-                    screen.appendChild(overlay);
+                        setup.appendChild(btnOk);
+                        screen.appendChild(setup);
+                    } else {
+                        // Normal Config (+ button)
+                        const overlay = document.createElement('div');
+                        overlay.className = 'config-overlay';
+
+                        // Check if occupied
+                        const hasItems = Object.keys(localState.slots || {}).some(k => k.startsWith(`${b}-`));
+
+                        const btn = document.createElement('div');
+                        btn.className = 'btn-round';
+                        if (splitCount >= 4 || hasItems) btn.classList.add('disabled');
+                        btn.textContent = '+';
+                        btn.onclick = () => window.actions.incrementSplit(b);
+
+                        overlay.appendChild(btn);
+                        screen.appendChild(overlay);
+                    }
                 }
 
                 grid.appendChild(screen);

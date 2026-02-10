@@ -7,7 +7,6 @@
     <style>
         :root {
             --primary: #8b5cf6;
-            /* Purple for Pick */
             --bg: #f8fafc;
             --surface: #ffffff;
             --border: #e2e8f0;
@@ -124,33 +123,37 @@
             background: #f8fafc;
         }
 
-        .location-tag {
-            font-family: monospace;
-            background: #e2e8f0;
-            padding: 2px 6px;
-            border-radius: 4px;
+        #connectionStatus {
+            font-size: 0.8rem;
+            margin-left: 1rem;
         }
     </style>
 </head>
 
 <body>
     <header>
-        <div style="display:flex; align-items:center; gap:1rem;">
+        <div style="display:flex; align-items:center;">
             <h2>🛒 ピッキングモード</h2>
+            <span id="sessionDisplay"
+                style="margin-left:1rem; background:#eee; padding:2px 6px; border-radius:4px; font-size:0.8rem;"></span>
+            <span id="connectionStatus" style="color:orange;">● 接続中...</span>
         </div>
         <div>
-            <a href="pc_inject.html" class="btn btn-outline" style="text-decoration:none;">投入モードへ ➔</a>
+            <a href="#" onclick="navToInject()" class="btn btn-outline" style="text-decoration:none;">投入モードへ ➔</a>
         </div>
     </header>
 
     <div class="container">
         <div class="sidebar">
             <h3>ピッキング開始</h3>
-            <input type="text" id="listInput" placeholder="リストIDをスキャン (例: LIST-01)..." autofocus>
+            <input type="text" id="listInput" placeholder="リストID (例: LIST-...) " autofocus>
 
             <div style="margin-top:2rem;">
                 <p style="font-size:0.8rem; color:#666;">デバッグツール:</p>
-                <button class="btn btn-outline" style="width:100%;" onclick="createSampleList()">+ サンプルリスト作成</button>
+                <button class="btn btn-outline" style="width:100%;" onclick="window.actions.createSampleList()">+
+                    サンプルリスト作成</button>
+                <button class="btn btn-outline" style="width:100%; margin-top:0.5rem; color:red;"
+                    onclick="window.actions.forcePickMode()">強制PICKモード切替</button>
             </div>
         </div>
 
@@ -174,160 +177,165 @@
         </div>
     </div>
 
-    <script>
-        // ==========================================
-        // SHARED STATE LOGIC
-        // ==========================================
-        const STORE_KEY = 'PICKCART_STATE_V1';
-        const CHANNEL_NAME = 'pickcart_demo';
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+        import { getDatabase, ref, onValue, set, update } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
-        class appState {
-            constructor() {
-                this.bc = new BroadcastChannel(CHANNEL_NAME);
-                this.bc.onmessage = (ev) => { if (ev.data.type === 'UPDATE') this.load(); };
-                this.load();
-            }
+        // TODO: Replace with your Firebase Config
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+            projectId: "YOUR_PROJECT",
+            storageBucket: "YOUR_PROJECT.appspot.com",
+            messagingSenderId: "SENDER_ID",
+            appId: "APP_ID"
+        };
 
-            load() {
-                try {
-                    this.data = JSON.parse(localStorage.getItem(STORE_KEY));
-                } catch (e) { this.data = null; }
-                if (!this.data) return; // Wait for init
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
 
-                // Ensure Pick Mode
-                if (this.data.mode !== 'PICK') {
-                    this.data.mode = 'PICK';
-                    this.save(true); // silent save
-                }
-                render();
-            }
+        // Session
+        const params = new URLSearchParams(window.location.search);
+        const SESSION_ID = params.get('session') || 'demo';
+        document.getElementById('sessionDisplay').textContent = `SESSION: ${SESSION_ID}`;
 
-            save(silent = false) {
-                localStorage.setItem(STORE_KEY, JSON.stringify(this.data));
-                if (!silent) this.bc.postMessage({ type: 'UPDATE' });
-                render();
-            }
-        }
+        const stateRef = ref(db, `pickcart_demo/${SESSION_ID}/state`);
 
-        const app = new appState();
+        let localState = {
+            mode: 'PICK',
+            config: { bays: 9, maxSplit: 4 },
+            slots: {},
+            pickLists: {},
+            activePick: {}
+        };
         let currentListId = null;
 
-        // ==========================================
-        // PICK LOGIC
-        // ==========================================
+        // --- Subscribe ---
+        onValue(stateRef, (snapshot) => {
+            const val = snapshot.val();
+            document.getElementById('connectionStatus').textContent = "● ONLINE";
+            document.getElementById('connectionStatus').style.color = "green";
 
-        document.getElementById('listInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') loadList(e.target.value.trim());
+            if (val) {
+                localState = { ...localState, ...val };
+                render();
+            }
         });
 
-        function createSampleList() {
-            if (!app.data) return alert("システムが初期化されていません。先に投入ページを開いてください。");
+        // --- Window Actions ---
+        window.navToInject = () => {
+            window.location.href = `pc_inject.html?session=${SESSION_ID}`;
+        };
 
-            const listId = "LIST-" + Math.floor(Math.random() * 1000);
+        window.actions = {
+            forcePickMode: () => {
+                update(stateRef, { mode: 'PICK' });
+                alert("モードを PICK に変更しました");
+            },
 
-            // Find inputs from existing slots if any, or random
-            const filledSlots = Object.values(app.data.slots);
-            if (filledSlots.length === 0) return alert("商品が投入されていません！");
+            createSampleList: () => {
+                const listId = "LIST-" + Math.floor(Math.random() * 1000);
+                const filledSlots = Object.values(localState.slots || {});
 
-            // Pick random 3 items
-            const lines = [];
-            for (let i = 0; i < 3; i++) {
-                const sku = filledSlots[Math.floor(Math.random() * filledSlots.length)].sku;
-                lines.push({ jan: sku, qty: Math.floor(Math.random() * 5) + 1, status: 'PENDING' });
-            }
+                if (filledSlots.length === 0) return alert("商品が投入されていません！");
 
-            const newList = { id: listId, lines };
-            const newData = { ...app.data };
-            // array or obj? Implementation Plan said Obj for pickLists but array is easier to manage order
-            if (!newData.pickLists) newData.pickLists = {};
-            newData.pickLists[listId] = lines;
+                const lines = [];
+                for (let i = 0; i < 3; i++) {
+                    const sku = filledSlots[Math.floor(Math.random() * filledSlots.length)].sku;
+                    lines.push({ jan: sku, qty: Math.floor(Math.random() * 5) + 1, status: 'PENDING' });
+                }
 
-            app.data = newData;
-            app.save();
+                const updates = {};
+                updates[`pickLists/${listId}`] = lines;
+                // Auto switch to PICK if strictly required, but let's assume user did it
+                // updates['mode'] = 'PICK'; 
 
-            alert(`リスト ${listId} を作成しました`);
-            loadList(listId);
-        }
+                update(stateRef, updates);
+                alert(`リスト ${listId} 作成完了`);
+                window.actions.loadList(listId);
+            },
 
-        function loadList(id) {
-            if (!app.data.pickLists || !app.data.pickLists[id]) {
-                alert("リストが見つかりません！");
-                return;
-            }
-            currentListId = id;
-            document.getElementById('currentListTitle').textContent = `ピッキング中: ${id}`;
-            document.getElementById('listInput').value = '';
+            loadList: (id) => {
+                if (!localState.pickLists || !localState.pickLists[id]) {
+                    alert("リストが見つかりません！");
+                    return;
+                }
+                currentListId = id;
+                document.getElementById('currentListTitle').textContent = `ピッキング中: ${id}`;
+                document.getElementById('listInput').value = '';
 
-            // Activate first instructions? 
-            // Logic: Calculate locations for all pending items and activate them ALL on mobile (multi-pick)
-            // Or one by one? User requirement: "Scan List ID -> Mobile lights up".
-            // Implementation: Light up ALL pending items for this list.
-            updateMobileLights();
-            render();
-        }
+                // Update Active Picks (RTDB)
+                const lines = localState.pickLists[id];
+                const newActivePick = {}; // Clear old
 
-        function updateMobileLights() {
-            if (!currentListId) return;
-            const lines = app.data.pickLists[currentListId];
-            const newActivePick = { ...app.data.activePick }; // Keep existing if concurrent? No, reset for this list usually.
+                lines.forEach(line => {
+                    if (line.status === 'DONE') return;
+                    // Find Slot
+                    const entry = Object.entries(localState.slots || {}).find(([k, v]) => v.sku === line.jan);
+                    if (entry) {
+                        const [slotKey] = entry;
+                        newActivePick[slotKey] = {
+                            qty: line.qty,
+                            color: 'auto'
+                        };
+                    }
+                });
 
-            // For Demo simplicity, we clear previous active picks when loading a new list? 
-            // Or just merge? Let's clear to avoid confusion.
-            // Actually, clear everything first.
-            for (let k in newActivePick) delete newActivePick[k];
+                // Write backend
+                update(stateRef, { activePick: newActivePick });
+            },
 
-            lines.forEach(line => {
+            completeLine: (index) => {
+                if (!currentListId) return;
+
+                // We need to update the specific line in the array logic
+                // RTDB array handling can be tricky, so we read full list, modify, write back
+                const lines = [...localState.pickLists[currentListId]];
+                const line = lines[index];
+
                 if (line.status === 'DONE') return;
+                line.status = 'DONE';
 
-                // Find Slot
-                const entry = Object.entries(app.data.slots).find(([k, v]) => v.sku === line.jan);
+                // Calc new ActivePick (remove this one)
+                // Actually, simplest is to re-calc strictly or just remove key
+                const entry = Object.entries(localState.slots || {}).find(([k, v]) => v.sku === line.jan);
+                const updates = {};
+
+                updates[`pickLists/${currentListId}`] = lines;
+
                 if (entry) {
-                    const [slotKey, val] = entry; // "1-1-1"
-                    newActivePick[slotKey] = {
-                        qty: line.qty,
-                        color: 'auto' // Mobile decides color based on sub-index
-                    };
+                    const [slotKey] = entry;
+                    // Just nulling the key to delete
+                    updates[`activePick/${slotKey}`] = null;
                 }
-            });
 
-            app.data.activePick = newActivePick;
-            app.save();
-        }
-
-        function completeLine(index) {
-            // Mark line as done
-            const lines = app.data.pickLists[currentListId];
-            const line = lines[index];
-            line.status = 'DONE';
-
-            // Update Active Picks (Remove this one)
-            // Find slot
-            const entry = Object.entries(app.data.slots).find(([k, v]) => v.sku === line.jan);
-            if (entry) {
-                const [slotKey] = entry;
-                if (app.data.activePick[slotKey]) {
-                    delete app.data.activePick[slotKey];
-                }
+                update(stateRef, updates);
             }
+        };
 
-            app.save();
-        }
+
+        document.getElementById('listInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') window.actions.loadList(e.target.value.trim());
+        });
 
         function render() {
             const tbody = document.getElementById('pickTable');
             tbody.innerHTML = '';
 
-            if (!currentListId || !app.data) return;
+            if (!currentListId || !localState.pickLists) return;
 
-            const lines = app.data.pickLists[currentListId];
+            const lines = localState.pickLists[currentListId];
+            if (!lines) return;
+
             lines.forEach((line, idx) => {
                 const tr = document.createElement('tr');
                 if (line.status === 'DONE') tr.className = 'row-done';
 
                 // Find Location
-                const entry = Object.entries(app.data.slots).find(([k, v]) => v.sku === line.jan);
+                const entry = Object.entries(localState.slots || {}).find(([k, v]) => v.sku === line.jan);
                 const location = entry ? entry[0] : "未投入";
-
                 const displayJan = line.jan.slice ? line.jan.slice(-4) : line.jan;
 
                 tr.innerHTML = `
@@ -337,7 +345,7 @@
                     <td><span class="status-badge ${line.status === 'DONE' ? 'status-done' : 'status-pending'}">${line.status === 'DONE' ? '完了' : '未完了'}</span></td>
                     <td>
                         ${line.status === 'PENDING'
-                        ? `<button class="btn btn-primary" onclick="completeLine(${idx})">完了</button>`
+                        ? `<button class="btn btn-primary" onclick="window.actions.completeLine(${idx})">完了</button>`
                         : '✔'}
                     </td>
                 `;

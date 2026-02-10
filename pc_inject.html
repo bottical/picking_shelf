@@ -145,25 +145,23 @@
             justify-content: center;
             font-size: 0.75rem;
             font-weight: 700;
-            cursor: not-allowed;
+            cursor: default;
+            /* Disabled click on PC */
             transition: 0.2s;
             background: #f1f5f9;
             color: #94a3b8;
             border: 2px solid transparent;
         }
 
-        .slot.active {
-            cursor: pointer;
-            background: #e0f2fe;
-            color: var(--primary);
-            border-color: var(--primary);
-        }
-
         .slot.filled {
             background: var(--success);
             color: white;
             border-color: transparent;
-            cursor: default;
+        }
+
+        /* Waiting Mobile State */
+        .waiting-mobile .slot {
+            opacity: 0.5;
         }
 
         .scan-area {
@@ -203,22 +201,17 @@
             --slot-hue: 220;
         }
 
-        /* Blue */
         .slot[data-sub="2"] {
             --slot-hue: 140;
         }
 
-        /* Green */
         .slot[data-sub="3"] {
             --slot-hue: 45;
         }
 
-        /* Yellow */
         .slot[data-sub="4"] {
             --slot-hue: 340;
         }
-
-        /* Pink */
 
         .slot.filled {
             background: hsl(var(--slot-hue), 70%, 50%);
@@ -230,10 +223,12 @@
     <header>
         <div style="display:flex; align-items:center; gap:1rem;">
             <h2>📦 投入モード</h2>
-            <span id="connectionStatus" style="font-size:0.8rem; color:var(--success);">● 接続中</span>
+            <span id="sessionDisplay"
+                style="font-size:0.8rem; background:#eee; padding:2px 6px; border-radius:4px;"></span>
+            <span id="connectionStatus" style="font-size:0.8rem; color:var(--warning);">● 接続中...</span>
         </div>
         <div>
-            <a href="pc_pick.html" class="btn btn-outline" style="text-decoration:none;">ピッキングモードへ ➔</a>
+            <a href="#" onclick="navToPick()" class="btn btn-outline" style="text-decoration:none;">ピッキングモードへ ➔</a>
         </div>
     </header>
 
@@ -247,8 +242,8 @@
 4901234567892
 4901234567893</textarea>
                 <div style="margin-top:0.5rem; display:flex; gap:0.5rem;">
-                    <button class="btn btn-primary" style="flex:1;" onclick="loadCsv()">CSV読込</button>
-                    <button class="btn btn-outline" onclick="resetAll()">リセット</button>
+                    <button class="btn btn-primary" style="flex:1;" onclick="window.actions.loadCsv()">CSV読込
+                        (RTDB)</button>
                 </div>
             </div>
 
@@ -258,9 +253,15 @@
                 <div id="scanMsg" class="alert hidden"></div>
             </div>
 
-            <div id="instructionPanel" class="card hidden">
-                <h3 style="color:var(--primary);">👉 要アクション</h3>
-                <p id="instructionText">右側のスロットを選択してください。</p>
+            <div id="instructionPanel" class="card hidden"
+                style="border: 2px solid var(--primary); background: #eff6ff;">
+                <h3 style="color:var(--primary); margin-top:0;">📱 スマホ操作待ち</h3>
+                <p id="instructionText" style="font-size:1.1rem; font-weight:bold;">
+                    該当BAYのスマホで<br>投入先（空きスロット）を<br>タップしてください。
+                </p>
+                <div style="font-size:0.8rem; color:#666; margin-top:10px;">
+                    ※PC側でのクリック操作は無効です
+                </div>
             </div>
         </div>
 
@@ -272,158 +273,153 @@
         </div>
     </div>
 
-    <script>
-        // ==========================================
-        // SHARED STATE LOGIC (Embedded for Standalone)
-        // ==========================================
-        const STORE_KEY = 'PICKCART_STATE_V1';
-        const CHANNEL_NAME = 'pickcart_demo';
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+        import { getDatabase, ref, onValue, set, update, runTransaction } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
-        const DEFAULT_STATE = {
-            mode: 'INJECT',
-            config: { bays: 9, maxSplit: 4 },
-            slots: {}, // Key: "bayId-subId" -> { sku, filled: true }
-            splits: {}, // Key: "bayId" -> count (1..4)
-            injectList: [], // Array of JANs
-            pickLists: [],
-            activePick: {}
+        // TODO: Replace with your Firebase Config
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+            projectId: "YOUR_PROJECT",
+            storageBucket: "YOUR_PROJECT.appspot.com",
+            messagingSenderId: "SENDER_ID",
+            appId: "APP_ID"
         };
 
-        class StateManager {
-            constructor() {
-                this.bc = new BroadcastChannel(CHANNEL_NAME);
-                this.bc.onmessage = (ev) => {
-                    if (ev.data.type === 'UPDATE') this.load();
-                    if (ev.data.type === 'RESET') this.resetLocal();
-                };
-                this.state = this.loadLocal() || DEFAULT_STATE;
+        // --- Init ---
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // Get Session
+        const params = new URLSearchParams(window.location.search);
+        const SESSION_ID = params.get('session') || 'demo';
+        document.getElementById('sessionDisplay').textContent = `SESSION: ${SESSION_ID}`;
+
+        const stateRef = ref(db, `pickcart_demo/${SESSION_ID}/state`);
+
+        // --- State Management ---
+        let localState = {
+            mode: 'INJECT',
+            config: { bays: 9, maxSplit: 4 },
+            slots: {},
+            splits: {},
+            injectList: [],
+            pickLists: [],
+            activePick: {},
+            injectPending: null // { jan, requestedAt }
+        };
+
+        // Subscribe to RTDB
+        onValue(stateRef, (snapshot) => {
+            document.getElementById('connectionStatus').textContent = "● ONLINE";
+            document.getElementById('connectionStatus').style.color = "var(--success)";
+
+            const data = snapshot.val();
+            if (data) {
+                localState = { ...localState, ...data };
+            } else {
+                // Initialize if empty
+                set(stateRef, localState);
             }
-
-            loadLocal() {
-                try {
-                    return JSON.parse(localStorage.getItem(STORE_KEY));
-                } catch (e) { return null; }
-            }
-
-            load() {
-                this.state = this.loadLocal() || DEFAULT_STATE;
-                render();
-            }
-
-            save(newState) {
-                this.state = newState;
-                localStorage.setItem(STORE_KEY, JSON.stringify(this.state));
-                this.bc.postMessage({ type: 'UPDATE' });
-                render();
-            }
-
-            resetLocal() {
-                localStorage.removeItem(STORE_KEY);
-                this.state = DEFAULT_STATE; // Revert to memory default
-                location.reload();
-            } // Don't broadcast inside resetLocal to avoid loops if called from broadcast
-        }
-
-        const app = new StateManager();
-
-        // ==========================================
-        // PAGE SPECIFIC LOGIC
-        // ==========================================
-        let currentScannedJan = null;
-
-        document.addEventListener('DOMContentLoaded', () => {
             render();
-            document.getElementById('scanInput').addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') handleScan(e.target.value.trim());
-            });
+            updateUIState();
+        }, (error) => {
+            console.error(error);
+            document.getElementById('connectionStatus').textContent = "● ERROR";
+            document.getElementById('connectionStatus').style.color = "var(--danger)";
         });
 
-        function resetAll() {
-            if (confirm("システム全体をリセットしますか？")) {
-                app.save(JSON.parse(JSON.stringify(DEFAULT_STATE))); // Deep copy default
-                location.reload();
+        // --- Actions Exposed to Window ---
+        window.navToPick = () => {
+            window.location.href = `pc_pick.html?session=${SESSION_ID}`;
+        };
+
+        window.actions = {
+            loadCsv: () => {
+                const lines = document.getElementById('csvInput').value.split('\n').filter(x => x.trim());
+                update(stateRef, { injectList: lines, mode: 'INJECT' });
+                alert(`${lines.length} 件のSKUを読み込みました`);
+            },
+
+            submitScan: (jan) => {
+                const msgEl = document.getElementById('scanMsg');
+                msgEl.className = 'alert hidden';
+
+                // 1. Validate
+                if (!localState.injectList.includes(jan)) {
+                    msgEl.textContent = `❌ SKU ${jan} はCSVに見つかりません`;
+                    msgEl.className = 'alert error';
+                    document.getElementById('scanInput').value = '';
+                    return;
+                }
+                const existing = Object.values(localState.slots || {}).find(s => s.sku === jan);
+                if (existing) {
+                    msgEl.textContent = `⚠️ SKU ${jan} は既に投入済みです`;
+                    msgEl.className = 'alert error';
+                    document.getElementById('scanInput').value = '';
+                    return;
+                }
+
+                // 2. Set Pending (Lock PC, Activate Mobile)
+                update(stateRef, {
+                    injectPending: {
+                        jan: jan,
+                        status: "WAITING_SLOT",
+                        requestedAt: Date.now()
+                    }
+                });
+                // Input cleared by render/updateUIState
             }
-        }
+        };
 
-        function loadCsv() {
-            const lines = document.getElementById('csvInput').value.split('\n').filter(x => x.trim());
-            const newState = { ...app.state, injectList: lines };
-            app.save(newState);
-            alert(`${lines.length} 件のSKUを読み込みました`);
-        }
+        // --- UI Logic ---
+        const scanInput = document.getElementById('scanInput');
+        scanInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') window.actions.submitScan(e.target.value.trim());
+        });
 
-        function handleScan(jan) {
-            const state = app.state;
-            const msgEl = document.getElementById('scanMsg');
-            const instEl = document.getElementById('instructionPanel');
-            const instText = document.getElementById('instructionText');
+        function updateUIState() {
+            const pending = localState.injectPending;
+            const instPanel = document.getElementById('instructionPanel');
+            const scanArea = document.getElementById('scanInput');
+            const scanMsg = document.getElementById('scanMsg');
 
-            msgEl.className = 'alert hidden';
-            instEl.classList.add('hidden');
-            currentScannedJan = null;
+            if (pending && pending.status === "WAITING_SLOT") {
+                // LOCK MODE
+                instPanel.classList.remove('hidden');
+                scanArea.disabled = true;
+                scanArea.value = pending.jan; // Show what we scanned
+                scanArea.classList.add('disabled');
 
-            if (!jan) return;
-
-            // 1. Check if in Inject List
-            if (!state.injectList.includes(jan)) {
-                msgEl.textContent = `❌ SKU ${jan} はCSVに見つかりません`;
-                msgEl.className = 'alert error';
-                document.getElementById('scanInput').value = '';
-                return;
+                scanMsg.textContent = `⏳ ${pending.jan} - 投入先を選択待機中...`;
+                scanMsg.className = 'alert info';
+            } else {
+                // FREE MODE
+                instPanel.classList.add('hidden');
+                scanArea.disabled = false;
+                if (scanArea.value && !document.activeElement.isSameNode(scanArea)) {
+                    scanArea.value = '';
+                }
+                // If just finished
+                if (scanMsg.className.includes('info')) {
+                    scanMsg.className = 'alert hidden';
+                    scanArea.value = '';
+                    scanArea.focus();
+                }
             }
-
-            // 2. Check Duplicates
-            const existing = Object.values(state.slots).find(s => s.sku === jan);
-            if (existing) {
-                msgEl.textContent = `⚠️ SKU ${jan} は既に投入済みです`;
-                msgEl.className = 'alert error'; // Using error style for visibility
-                document.getElementById('scanInput').value = '';
-                return;
-            }
-
-            // 3. Valid -> Enter Select Mode
-            currentScannedJan = jan;
-            msgEl.textContent = `✅ スキャンOK: ${jan}`;
-            msgEl.className = 'alert info';
-            instEl.classList.remove('hidden');
-            instText.textContent = "右側の空きスロットを選択して割り当ててください。";
-
-            // Re-render to show highlighting
-            render();
-        }
-
-        function handleSlotClick(bayId, subId) {
-            if (!currentScannedJan) return;
-
-            const slotKey = `${bayId}-${subId}`;
-            const state = app.state;
-
-            // Prevent overwrite
-            if (state.slots[slotKey]) {
-                alert("そのスロットは既に使用されています！");
-                return;
-            }
-
-            // Update State
-            const newSlots = { ...state.slots, [slotKey]: { sku: currentScannedJan } };
-            app.save({ ...state, slots: newSlots });
-
-            // Reset Input
-            currentScannedJan = null;
-            document.getElementById('scanInput').value = '';
-            document.getElementById('scanMsg').className = 'alert hidden';
-            document.getElementById('instructionPanel').classList.add('hidden');
-            document.getElementById('scanInput').focus();
         }
 
         function render() {
-            const state = app.state;
             const grid = document.getElementById('bayGrid');
             grid.innerHTML = '';
 
-            for (let b = 1; b <= state.config.bays; b++) {
+            for (let b = 1; b <= localState.config.bays; b++) {
                 const bayEl = document.createElement('div');
                 bayEl.className = 'bay-card';
+                // If pending, maybe highlight bay? 
 
                 // Header
                 const title = document.createElement('div');
@@ -431,44 +427,37 @@
                 title.textContent = `BAY ${b}`;
                 bayEl.appendChild(title);
 
-                // Slots Container
                 const container = document.createElement('div');
                 container.className = 'split-container';
 
-                // Get split count (default 1 if not set)
-                const splitCount = state.splits[b] || 1;
+                const splitCount = (localState.splits && localState.splits[b]) || 1; // Default to 1 (but mobile enforces check)
 
-                for (let s = 1; s <= splitCount; s++) {
-                    const slotKey = `${b}-${s}`;
-                    const slotData = state.slots[slotKey];
-                    const slot = document.createElement('div');
+                // Note: If split not confirmed (undefined), it essentially behaves like 1 but maybe greyed out?
+                // User requirement: "If split not set... cannot use".
+                // Implementation: If localState.splits[b] is undefined, we show "未設定".
+                const isSplitDefined = (localState.splits && localState.splits[b] !== undefined);
 
-                    slot.className = 'slot';
-                    slot.dataset.sub = s;
+                if (!isSplitDefined) {
+                    // Show Unconfigured State
+                    container.innerHTML = `<div style="flex:1; display:flex; align-items:center; justify-content:center; color:#ccc; font-size:0.8rem; background:#f9f9f9;">スマホで設定</div>`;
+                } else {
+                    for (let s = 1; s <= splitCount; s++) {
+                        const slotKey = `${b}-${s}`;
+                        const slotData = localState.slots && localState.slots[slotKey];
+                        const slot = document.createElement('div');
 
-                    if (slotData) {
-                        slot.classList.add('filled');
-                        // Show last 4 digits
-                        slot.textContent = slotData.sku.slice(-4);
-                    } else if (currentScannedJan) {
-                        slot.classList.add('active');
-                        slot.textContent = "選択";
-                        slot.onclick = () => handleSlotClick(b, s);
-                    } else {
-                        slot.textContent = "空";
+                        slot.className = 'slot';
+                        slot.dataset.sub = s;
+
+                        if (slotData) {
+                            slot.classList.add('filled');
+                            slot.textContent = slotData.sku.slice(-4);
+                        } else {
+                            slot.textContent = "空";
+                        }
+                        container.appendChild(slot);
                     }
-
-                    container.appendChild(slot);
                 }
-
-                // If in selection mode but split is 1 (and empty), show hint? 
-                // Requirement: "If split not set, PC says 'set on mobile'".
-                // Implementation: If split is 1, user can technically select it. 
-                // The requirement says "Initial inject... if split not set... PC says set on mobile".
-                // We'll trust the Mobile Wall default behavior (starts at 1). 
-                // We won't block selection on count=1, but we might show a hint if we wanted.
-                // For now, simple is best.
-
                 bayEl.appendChild(container);
                 grid.appendChild(bayEl);
             }

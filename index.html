@@ -92,34 +92,77 @@
 <body>
 
     <h1>CODEX デモ</h1>
-    <p>以下の画面を別々のタブまたはウィンドウで開いてください。</p>
+    <p>セッションIDを指定して、各画面を開いてください。</p>
+
+    <div
+        style="background: white; padding: 1rem; border-radius: 0.5rem; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <label style="font-weight:bold; margin-right:0.5rem;">セッションID:</label>
+        <input type="text" id="sessionId" value="demo"
+            style="padding:0.5rem; border:1px solid #ccc; border-radius:4px; width:150px; text-align:center;">
+    </div>
 
     <div class="grid">
-        <a href="pc_inject.html" target="_blank" class="card">
+        <a href="#" onclick="openLink('pc_inject.html'); return false;" class="card">
             <h2>📦 投入モード</h2>
             <p>PC画面（入力用）</p>
         </a>
-        <a href="mobile_wall.html" target="_blank" class="card">
+        <a href="#" onclick="openLink('mobile_wall.html'); return false;" class="card">
             <h2>📱 モバイルウォール</h2>
             <p>9間口表示</p>
         </a>
-        <a href="pc_pick.html" target="_blank" class="card">
+        <a href="#" onclick="openLink('pc_pick.html'); return false;" class="card">
             <h2>🛒 ピッキングモード</h2>
             <p>PC画面（出庫用）</p>
         </a>
     </div>
 
-    <button onclick="resetDemo()" class="reset-btn">全データをリセット</button>
+    <button onclick="resetDemo()" class="reset-btn">このセッションをリセット</button>
 
     <script>
-        function resetDemo() {
-            if (confirm("全てのデモデータを消去してもよろしいですか？")) {
-                localStorage.removeItem('PICKCART_STATE_V1');
-                const bc = new BroadcastChannel('pickcart_demo');
-                bc.postMessage({ type: 'RESET' });
-                alert("データリセット完了");
-            }
+        <script type="module">
+            import {initializeApp} from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+            import {getDatabase, ref, remove} from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+
+            // TODO: Replace with your Firebase Config
+            const firebaseConfig = {
+                apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+            projectId: "YOUR_PROJECT",
+            storageBucket: "YOUR_PROJECT.appspot.com",
+            messagingSenderId: "SENDER_ID",
+            appId: "APP_ID"
+        };
+
+            let db;
+            try {
+            const app = initializeApp(firebaseConfig);
+            db = getDatabase(app);
+        } catch(e) {
+                console.error("Firebase Init Error", e);
         }
+
+        window.openLink = (page) => {
+            const sid = document.getElementById('sessionId').value || 'demo';
+            window.open(`${page}?session=${sid}`, '_blank');
+        };
+
+        window.resetDemo = async () => {
+            if(!db) {
+                alert("Firebaseが設定されていません。コード内のfirebaseConfigを更新してください。");
+            return;
+            }
+            if (confirm("現在のセッションデータを完全に消去してもよろしいですか？")) {
+                const sid = document.getElementById('sessionId').value || 'demo';
+            const sessionRef = ref(db, `pickcart_demo/${sid}`);
+                try {
+                    await remove(sessionRef);
+                    alert("リセット完了 (RTDB)");
+                } catch(e) {
+                    alert("リセット失敗: " + e.message);
+                }
+            }
+        };
     </script>
 </body>
 
