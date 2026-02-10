@@ -127,6 +127,33 @@
             font-size: 0.8rem;
             margin-left: 1rem;
         }
+
+        .location-tag {
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-weight: bold;
+            display: inline-block;
+        }
+
+        .loc-1 {
+            background-color: #3b82f6;
+            color: white;
+        }
+
+        .loc-2 {
+            background-color: #22c55e;
+            color: white;
+        }
+
+        .loc-3 {
+            background-color: #eab308;
+            color: black;
+        }
+
+        .loc-4 {
+            background-color: #ec4899;
+            color: white;
+        }
     </style>
 </head>
 
@@ -346,12 +373,19 @@
                 // Find Location
                 const entry = Object.entries(localState.slots || {}).find(([k, v]) => v.sku === line.jan);
                 const location = entry ? entry[0] : "未投入";
+
+                let locClass = '';
+                if (entry) {
+                    const sub = location.split('-')[1]; // "1-2" -> "2"
+                    if (sub) locClass = `loc-${sub}`;
+                }
+
                 const displayJan = line.jan.slice ? line.jan.slice(-4) : line.jan;
 
                 tr.innerHTML = `
                     <td>...${displayJan}</td>
                     <td style="font-weight:bold; font-size:1.2em;">${line.qty}</td>
-                    <td><span class="location-tag">${location}</span></td>
+                    <td><span class="location-tag ${locClass}">${location}</span></td>
                     <td><span class="status-badge ${line.status === 'DONE' ? 'status-done' : 'status-pending'}">${line.status === 'DONE' ? '完了' : '未完了'}</span></td>
                     <td>
                         ${line.status === 'PENDING'

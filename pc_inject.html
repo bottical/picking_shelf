@@ -133,8 +133,10 @@
 
         .split-container {
             flex: 1;
-            display: flex;
-            gap: 4px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 2px;
         }
 
         .slot {
@@ -497,6 +499,25 @@
 
                         slot.className = 'slot';
                         slot.dataset.sub = s;
+
+                        // Grid Spans
+                        if (splitCount === 1) {
+                            slot.style.gridColumn = "span 2";
+                            slot.style.gridRow = "span 2";
+                        } else if (splitCount === 2) {
+                            slot.style.gridColumn = "span 2";
+                            slot.style.gridRow = "span 1";
+                        } else if (splitCount === 3) {
+                            if (s === 1) {
+                                slot.style.gridColumn = "span 2";
+                                slot.style.gridRow = "span 1";
+                            } else {
+                                slot.style.gridColumn = "span 1";
+                                slot.style.gridRow = "span 1";
+                            }
+                        } else {
+                            // 4 splits -> 1x1
+                        }
 
                         if (slotData) {
                             slot.classList.add('filled');
