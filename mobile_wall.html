@@ -96,7 +96,7 @@
         /* Pick Active State */
         .block.picking {
             background: var(--pick-color);
-            color: white;
+            color: var(--pick-text-color, white);
             font-size: 2rem;
             box-shadow: 0 0 15px var(--pick-color);
             z-index: 10;
@@ -134,18 +134,22 @@
         /* Split Colors Definitions for Pick Mode */
         .block[data-sub="1"] {
             --pick-color: #3b82f6;
+            --pick-text-color: white;
         }
 
         .block[data-sub="2"] {
             --pick-color: #22c55e;
+            --pick-text-color: white;
         }
 
         .block[data-sub="3"] {
             --pick-color: #eab308;
+            --pick-text-color: black;
         }
 
         .block[data-sub="4"] {
             --pick-color: #ec4899;
+            --pick-text-color: white;
         }
 
         /* Config UI overlay */
