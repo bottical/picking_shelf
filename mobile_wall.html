@@ -89,8 +89,10 @@
 
         /* Filled State */
         .block.filled {
-            color: #888;
-            border: 1px solid #444;
+            background: var(--pick-color);
+            color: var(--pick-text-color, white);
+            opacity: 0.6;
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
 
         /* Pick Active State */
@@ -105,16 +107,17 @@
         /* Selectable for Inject (Pending Mode) */
         .block.inject-ready {
             cursor: pointer;
-            background: #1e293b;
-            color: #ccc;
-            border: 2px dashed #94a3b8;
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--pick-color);
+            border: 2px dashed var(--pick-color);
             animation: pulse 1.5s infinite;
+            font-weight: 900;
         }
 
         .block.inject-ready:hover {
-            background: #334155;
-            border-color: white;
-            color: white;
+            background: var(--pick-color);
+            color: var(--pick-text-color, white);
+            border-color: transparent;
         }
 
         @keyframes pulse {
