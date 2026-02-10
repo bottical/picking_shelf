@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <title>CODEX - Pick Mode</title>
+    <style>
+        :root {
+            --primary: #8b5cf6;
+            /* Purple for Pick */
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --border: #e2e8f0;
+            --text: #0f172a;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 300px;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .main-list {
+            flex: 1;
+            padding: 2rem;
+            overflow-y: auto;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-outline {
+            border: 1px solid var(--border);
+            background: white;
+        }
+
+        input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 0.5rem;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        th,
+        td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            background: #f1f5f9;
+            font-size: 0.875rem;
+            color: #64748b;
+        }
+
+        .status-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 99px;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+
+        .status-pending {
+            background: #fef3c7;
+            color: #d97706;
+        }
+
+        .status-done {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .row-done {
+            opacity: 0.5;
+            background: #f8fafc;
+        }
+
+        .location-tag {
+            font-family: monospace;
+            background: #e2e8f0;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <div style="display:flex; align-items:center; gap:1rem;">
+            <h2>🛒 Pick Mode</h2>
+        </div>
+        <div>
+            <a href="pc_inject.html" class="btn btn-outline" style="text-decoration:none;">Switch to Inject ➔</a>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="sidebar">
+            <h3>Start Picking</h3>
+            <input type="text" id="listInput" placeholder="Scan List ID (e.g. LIST-01)..." autofocus>
+
+            <div style="margin-top:2rem;">
+                <p style="font-size:0.8rem; color:#666;">Debug Tools:</p>
+                <button class="btn btn-outline" style="width:100%;" onclick="createSampleList()">+ Create Sample
+                    List</button>
+            </div>
+        </div>
+
+        <div class="main-list">
+            <h3 id="currentListTitle">No List Selected</h3>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>JAN</th>
+                        <th>QTY</th>
+                        <th>LOCATION</th>
+                        <th>STATUS</th>
+                        <th>ACTION</th>
+                    </tr>
+                </thead>
+                <tbody id="pickTable">
+                    <!-- Rows -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // SHARED STATE LOGIC
+        // ==========================================
+        const STORE_KEY = 'PICKCART_STATE_V1';
+        const CHANNEL_NAME = 'pickcart_demo';
+
+        class appState {
+            constructor() {
+                this.bc = new BroadcastChannel(CHANNEL_NAME);
+                this.bc.onmessage = (ev) => { if (ev.data.type === 'UPDATE') this.load(); };
+                this.load();
+            }
+
+            load() {
+                try {
+                    this.data = JSON.parse(localStorage.getItem(STORE_KEY));
+                } catch (e) { this.data = null; }
+                if (!this.data) return; // Wait for init
+
+                // Ensure Pick Mode
+                if (this.data.mode !== 'PICK') {
+                    this.data.mode = 'PICK';
+                    this.save(true); // silent save
+                }
+                render();
+            }
+
+            save(silent = false) {
+                localStorage.setItem(STORE_KEY, JSON.stringify(this.data));
+                if (!silent) this.bc.postMessage({ type: 'UPDATE' });
+                render();
+            }
+        }
+
+        const app = new appState();
+        let currentListId = null;
+
+        // ==========================================
+        // PICK LOGIC
+        // ==========================================
+
+        document.getElementById('listInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') loadList(e.target.value.trim());
+        });
+
+        function createSampleList() {
+            if (!app.data) return alert("System not initialized. Go to Inject page first.");
+
+            const listId = "LIST-" + Math.floor(Math.random() * 1000);
+
+            // Find inputs from existing slots if any, or random
+            const filledSlots = Object.values(app.data.slots);
+            if (filledSlots.length === 0) return alert("No items injected yet!");
+
+            // Pick random 3 items
+            const lines = [];
+            for (let i = 0; i < 3; i++) {
+                const sku = filledSlots[Math.floor(Math.random() * filledSlots.length)].sku;
+                lines.push({ jan: sku, qty: Math.floor(Math.random() * 5) + 1, status: 'PENDING' });
+            }
+
+            const newList = { id: listId, lines };
+            const newData = { ...app.data };
+            // array or obj? Implementation Plan said Obj for pickLists but array is easier to manage order
+            if (!newData.pickLists) newData.pickLists = {};
+            newData.pickLists[listId] = lines;
+
+            app.data = newData;
+            app.save();
+
+            alert(`Created ${listId}`);
+            loadList(listId);
+        }
+
+        function loadList(id) {
+            if (!app.data.pickLists || !app.data.pickLists[id]) {
+                alert("List not found!");
+                return;
+            }
+            currentListId = id;
+            document.getElementById('currentListTitle').textContent = `Now Picking: ${id}`;
+            document.getElementById('listInput').value = '';
+
+            // Activate first instructions? 
+            // Logic: Calculate locations for all pending items and activate them ALL on mobile (multi-pick)
+            // Or one by one? User requirement: "Scan List ID -> Mobile lights up".
+            // Implementation: Light up ALL pending items for this list.
+            updateMobileLights();
+            render();
+        }
+
+        function updateMobileLights() {
+            if (!currentListId) return;
+            const lines = app.data.pickLists[currentListId];
+            const newActivePick = { ...app.data.activePick }; // Keep existing if concurrent? No, reset for this list usually.
+
+            // For Demo simplicity, we clear previous active picks when loading a new list? 
+            // Or just merge? Let's clear to avoid confusion.
+            // Actually, clear everything first.
+            for (let k in newActivePick) delete newActivePick[k];
+
+            lines.forEach(line => {
+                if (line.status === 'DONE') return;
+
+                // Find Slot
+                const entry = Object.entries(app.data.slots).find(([k, v]) => v.sku === line.jan);
+                if (entry) {
+                    const [slotKey, val] = entry; // "1-1-1"
+                    newActivePick[slotKey] = {
+                        qty: line.qty,
+                        color: 'auto' // Mobile decides color based on sub-index
+                    };
+                }
+            });
+
+            app.data.activePick = newActivePick;
+            app.save();
+        }
+
+        function completeLine(index) {
+            // Mark line as done
+            const lines = app.data.pickLists[currentListId];
+            const line = lines[index];
+            line.status = 'DONE';
+
+            // Update Active Picks (Remove this one)
+            // Find slot
+            const entry = Object.entries(app.data.slots).find(([k, v]) => v.sku === line.jan);
+            if (entry) {
+                const [slotKey] = entry;
+                if (app.data.activePick[slotKey]) {
+                    delete app.data.activePick[slotKey];
+                }
+            }
+
+            app.save();
+        }
+
+        function render() {
+            const tbody = document.getElementById('pickTable');
+            tbody.innerHTML = '';
+
+            if (!currentListId || !app.data) return;
+
+            const lines = app.data.pickLists[currentListId];
+            lines.forEach((line, idx) => {
+                const tr = document.createElement('tr');
+                if (line.status === 'DONE') tr.className = 'row-done';
+
+                // Find Location
+                const entry = Object.entries(app.data.slots).find(([k, v]) => v.sku === line.jan);
+                const location = entry ? entry[0] : "NOT INJECTED";
+
+                const displayJan = line.jan.slice ? line.jan.slice(-4) : line.jan;
+
+                tr.innerHTML = `
+                    <td>...${displayJan}</td>
+                    <td style="font-weight:bold; font-size:1.2em;">${line.qty}</td>
+                    <td><span class="location-tag">${location}</span></td>
+                    <td><span class="status-badge ${line.status === 'DONE' ? 'status-done' : 'status-pending'}">${line.status}</span></td>
+                    <td>
+                        ${line.status === 'PENDING'
+                        ? `<button class="btn btn-primary" onclick="completeLine(${idx})">Done</button>`
+                        : '✔'}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+    </script>
+</body>
+
+</html>

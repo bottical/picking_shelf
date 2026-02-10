@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <title>CODEX - Mobile Wall</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --text: #f8fafc;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Inter', system-ui;
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .wall-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            height: 100vh;
+            gap: 2px;
+            padding: 2px;
+            border: 4px solid #334155;
+        }
+
+        .mobile-screen {
+            background: black;
+            border: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .screen-header {
+            background: #334155;
+            color: #94a3b8;
+            font-size: 0.75rem;
+            padding: 0.25rem;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .screen-body {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 0.25rem;
+            gap: 2px;
+        }
+
+        /* Split Blocks */
+        .block {
+            flex: 1;
+            background: #1e1e1e;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            color: #444;
+            font-weight: bold;
+            border-radius: 4px;
+            transition: 0.3s;
+        }
+
+        /* Filled State */
+        .block.filled {
+            color: #888;
+            border: 1px solid #444;
+        }
+
+        /* Pick Active State */
+        .block.picking {
+            background: var(--pick-color);
+            color: white;
+            /* White text for quantity */
+            font-size: 2rem;
+            box-shadow: 0 0 15px var(--pick-color);
+            z-index: 10;
+        }
+
+        /* Split Colors Definitions for Pick Mode */
+        .block[data-sub="1"] {
+            --pick-color: #3b82f6;
+        }
+
+        .block[data-sub="2"] {
+            --pick-color: #22c55e;
+        }
+
+        .block[data-sub="3"] {
+            --pick-color: #eab308;
+        }
+
+        .block[data-sub="4"] {
+            --pick-color: #ec4899;
+        }
+
+        /* Config UI overlay */
+        .config-overlay {
+            position: absolute;
+            bottom: 5px;
+            right: 5px;
+            opacity: 0;
+            transition: 0.2s;
+        }
+
+        .mobile-screen:hover .config-overlay {
+            opacity: 1;
+        }
+
+        .btn-plus {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid white;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-plus:hover {
+            background: rgba(255, 255, 255, 0.4);
+        }
+
+        .disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="wall-grid" id="wall">
+        <!-- 9 Screens generated here -->
+    </div>
+
+    <script>
+        // ==========================================
+        // SHARED STATE LOGIC (Duplicated for standalone)
+        // ==========================================
+        const STORE_KEY = 'PICKCART_STATE_V1';
+        const CHANNEL_NAME = 'pickcart_demo';
+
+        const DEFAULT_STATE = {
+            mode: 'INJECT',
+            config: { bays: 9, maxSplit: 4 },
+            slots: {},
+            splits: {},
+            activePick: {}
+        };
+
+        class StateReader {
+            constructor() {
+                this.bc = new BroadcastChannel(CHANNEL_NAME);
+                this.bc.onmessage = (ev) => {
+                    if (ev.data.type === 'UPDATE' || ev.data.type === 'RESET') this.load();
+                };
+                this.load();
+            }
+
+            load() {
+                try {
+                    this.state = JSON.parse(localStorage.getItem(STORE_KEY)) || DEFAULT_STATE;
+                } catch (e) { this.state = DEFAULT_STATE; }
+                render();
+            }
+
+            updateSplit(bayId) {
+                // Allows mobile to write state for split config
+                const current = this.state.splits[bayId] || 1;
+                if (current >= 4) return;
+
+                // Check if occupied (Requirement: Block split if occupied)
+                // Actually, requirement says "Block if ALREADY has items".
+                // If items exist in current subslots, we can't easily re-partition physically without moving them.
+                // Logic: check if any slot in this bay is filled.
+                const hasItems = Object.keys(this.state.slots).some(k => k.startsWith(`${bayId}-`));
+                if (hasItems) {
+                    alert("Cannot split occupied bay!");
+                    return;
+                }
+
+                this.state.splits[bayId] = current + 1;
+                localStorage.setItem(STORE_KEY, JSON.stringify(this.state));
+                this.bc.postMessage({ type: 'UPDATE' });
+                this.load();
+            }
+        }
+
+        const app = new StateReader();
+
+        function render() {
+            const grid = document.getElementById('wall');
+            grid.innerHTML = '';
+            const state = app.state;
+
+            for (let b = 1; b <= 9; b++) {
+                const screen = document.createElement('div');
+                screen.className = 'mobile-screen';
+
+                // Header
+                screen.innerHTML = `<div class="screen-header">BAY ${b}</div>`;
+
+                // Body
+                const body = document.createElement('div');
+                body.className = 'screen-body';
+
+                const splitCount = state.splits[b] || 1;
+
+                for (let s = 1; s <= splitCount; s++) {
+                    const block = document.createElement('div');
+                    block.className = 'block';
+                    block.dataset.sub = s;
+
+                    const slotKey = `${b}-${s}`;
+                    const slotData = state.slots[slotKey];
+                    const pickData = state.activePick[slotKey]; // { qty: 2 }
+
+                    if (state.mode === 'PICK' && pickData) {
+                        // Light up!
+                        block.classList.add('picking');
+                        block.textContent = pickData.qty;
+                    } else if (slotData) {
+                        block.classList.add('filled');
+                        block.textContent = slotData.sku.slice(-4);
+                    } else {
+                        block.textContent = s;
+                    }
+                    body.appendChild(block);
+                }
+                screen.appendChild(body);
+
+                // Config Overlay (Only in Inject Mode)
+                if (state.mode === 'INJECT') {
+                    const overlay = document.createElement('div');
+                    overlay.className = 'config-overlay';
+                    const hasItems = Object.keys(state.slots).some(k => k.startsWith(`${b}-`));
+
+                    const btn = document.createElement('div');
+                    btn.className = 'btn-plus';
+                    if (splitCount >= 4 || hasItems) btn.classList.add('disabled');
+                    btn.textContent = '+';
+                    btn.onclick = () => app.updateSplit(b);
+
+                    overlay.appendChild(btn);
+                    screen.appendChild(overlay);
+                }
+
+                grid.appendChild(screen);
+            }
+        }
+    </script>
+</body>
+
+</html>

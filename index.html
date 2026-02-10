@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demo Portal</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --text: #0f172a;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            gap: 2rem;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 2.5rem;
+            font-weight: 800;
+            letter-spacing: -0.05em;
+            color: var(--primary);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+        }
+
+        .card {
+            background: var(--surface);
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            text-decoration: none;
+            color: inherit;
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+            width: 200px;
+        }
+
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+        }
+
+        .card h2 {
+            margin: 0;
+            font-size: 1.25rem;
+        }
+
+        .card p {
+            margin: 0;
+            text-align: center;
+            font-size: 0.875rem;
+            color: #64748b;
+        }
+
+        .reset-btn {
+            margin-top: 2rem;
+            padding: 0.75rem 1.5rem;
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .reset-btn:hover {
+            background: #dc2626;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>CODEX DEMO</h1>
+    <p>Please open these in separate tabs/windows.</p>
+
+    <div class="grid">
+        <a href="pc_inject.html" target="_blank" class="card">
+            <h2>📦 Inject Mode</h2>
+            <p>PC Screen for Input</p>
+        </a>
+        <a href="mobile_wall.html" target="_blank" class="card">
+            <h2>📱 Mobile Wall</h2>
+            <p>9-Bay Display</p>
+        </a>
+        <a href="pc_pick.html" target="_blank" class="card">
+            <h2>🛒 Pick Mode</h2>
+            <p>PC Screen for Output</p>
+        </a>
+    </div>
+
+    <button onclick="resetDemo()" class="reset-btn">Reset All Data</button>
+
+    <script>
+        function resetDemo() {
+            if (confirm("Are you sure you want to clear all demo data?")) {
+                localStorage.removeItem('PICKCART_STATE_V1');
+                const bc = new BroadcastChannel('pickcart_demo');
+                bc.postMessage({ type: 'RESET' });
+                alert("Data Reset Complete.");
+            }
+        }
+    </script>
+</body>
+
+</html>
