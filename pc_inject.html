@@ -309,7 +309,7 @@
             slots: {},
             splits: {},
             injectList: [],
-            pickLists: [],
+            pickLists: {},
             activePick: {},
             injectPending: null // { jan, requestedAt }
         };
@@ -334,6 +334,18 @@
             document.getElementById('connectionStatus').style.color = "var(--danger)";
         });
 
+        // --- Helper ---
+        const normalizeJan = (jan) => {
+            if (!jan) return "";
+            // 1. Trim whitespace/newlines
+            let s = jan.trim();
+            // 2. Remove carriage returns just in case
+            s = s.replace(/\r/g, '');
+            // 3. Full-width to Half-width (optional but safe)
+            s = s.replace(/[０-９]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+            return s;
+        };
+
         // --- Actions Exposed to Window ---
         window.navToHome = () => {
             window.location.href = `index.html?session=${SESSION_ID}`;
@@ -349,14 +361,40 @@
 
         window.actions = {
             loadCsv: () => {
-                const lines = document.getElementById('csvInput').value.split('\n').filter(x => x.trim());
-                update(stateRef, { injectList: lines, mode: 'INJECT' });
-                alert(`${lines.length} 件のSKUを読み込みました`);
+                const raw = document.getElementById('csvInput').value;
+                const lines = raw.split(/\n/).map(normalizeJan).filter(x => x);
+
+                // Auto-init splits if empty (to prevent Mobile Wall blocking)
+                const updates = { injectList: lines, mode: 'INJECT' };
+
+                // Check if splits are completely empty for bays 1..9
+                const currentSplits = localState.splits || {};
+                let needInit = false;
+                const newSplits = { ...currentSplits };
+
+                for (let b = 1; b <= localState.config.bays; b++) {
+                    if (newSplits[b] === undefined) {
+                        newSplits[b] = 1;
+                        needInit = true;
+                    }
+                }
+
+                if (needInit) {
+                    updates['splits'] = newSplits;
+                    console.log("Auto-initialized splits to 1 for all bays.");
+                }
+
+                update(stateRef, updates);
+                alert(`${lines.length} 件のSKUを読み込みました (splits自動初期化含む)`);
+                console.log("Loaded CSV:", lines);
             },
 
-            submitScan: (jan) => {
+            submitScan: (rawJan) => {
+                const jan = normalizeJan(rawJan);
                 const msgEl = document.getElementById('scanMsg');
                 msgEl.className = 'alert hidden';
+
+                console.log("SubmitScan:", { raw: rawJan, normalized: jan, list: localState.injectList });
 
                 // 1. Validate
                 if (!localState.injectList.includes(jan)) {

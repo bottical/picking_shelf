@@ -269,10 +269,23 @@
         onValue(stateRef, (snapshot) => {
             const val = snapshot.val();
             if (val) localState = { ...localState, ...val };
+
+            console.log("State Updated:", val);
             render();
 
             // Show Live Status
-            document.querySelectorAll('.live-badge').forEach(el => el.classList.add('on'));
+            document.querySelectorAll('.live-badge').forEach(el => {
+                el.classList.add('on');
+                el.style.color = '#22c55e'; // Green
+                el.textContent = '● LIVE';
+            });
+        }, (error) => {
+            console.error("Firebase Error", error);
+            document.querySelectorAll('.live-badge').forEach(el => {
+                el.classList.add('on');
+                el.style.color = '#ef4444'; // Red
+                el.textContent = '● OFFLINE';
+            });
         });
 
         window.navToHome = () => {
@@ -409,7 +422,13 @@
                     if (!isConfigured) {
                         const setup = document.createElement('div');
                         setup.className = 'setup-needed';
-                        setup.innerHTML = `<div style="margin-bottom:5px;">未設定</div>`;
+
+                        // If pending exists, warn heavily
+                        if (localState.injectPending) {
+                            setup.innerHTML = `<div style="margin-bottom:5px; color:#fca5a5; font-weight:bold;">投入待機中<br>未設定</div>`;
+                        } else {
+                            setup.innerHTML = `<div style="margin-bottom:5px;">未設定</div>`;
+                        }
 
                         const btnOk = document.createElement('div');
                         btnOk.className = 'btn-round btn-confirm';
