@@ -227,7 +227,9 @@
                 style="font-size:0.8rem; background:#eee; padding:2px 6px; border-radius:4px;"></span>
             <span id="connectionStatus" style="font-size:0.8rem; color:var(--warning);">● 接続中...</span>
         </div>
-        <div>
+        <div style="display:flex; gap:0.5rem;">
+            <a href="#" onclick="navToHome()" class="btn btn-outline" style="text-decoration:none;">🏠 HOME</a>
+            <a href="#" onclick="navToWall()" class="btn btn-outline" style="text-decoration:none;">📱 Wall</a>
             <a href="#" onclick="navToPick()" class="btn btn-outline" style="text-decoration:none;">ピッキングモードへ ➔</a>
         </div>
     </header>
@@ -279,15 +281,15 @@
         import { getDatabase, ref, onValue, set, update, runTransaction } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
         // TODO: Replace with your Firebase Config
-  const firebaseConfig = {
-    apiKey: "AIzaSyBlhRZK40uElE16XBPrppyixnE6Ei6zZUs",
-    authDomain: "picking-shelf.firebaseapp.com",
-    databaseURL: "https://picking-shelf-default-rtdb.firebaseio.com",
-    projectId: "picking-shelf",
-    storageBucket: "picking-shelf.firebasestorage.app",
-    messagingSenderId: "665778536175",
-    appId: "1:665778536175:web:48017831cf6256a5e5e51a"
-  };
+        const firebaseConfig = {
+            apiKey: "AIzaSyBlhRZK40uElE16XBPrppyixnE6Ei6zZUs",
+            authDomain: "picking-shelf.firebaseapp.com",
+            databaseURL: "https://picking-shelf-default-rtdb.firebaseio.com",
+            projectId: "picking-shelf",
+            storageBucket: "picking-shelf.firebasestorage.app",
+            messagingSenderId: "665778536175",
+            appId: "1:665778536175:web:48017831cf6256a5e5e51a"
+        };
 
         // --- Init ---
         const app = initializeApp(firebaseConfig);
@@ -333,6 +335,14 @@
         });
 
         // --- Actions Exposed to Window ---
+        window.navToHome = () => {
+            window.location.href = `index.html?session=${SESSION_ID}`;
+        };
+
+        window.navToWall = () => {
+            window.location.href = `mobile_wall.html?session=${SESSION_ID}`;
+        };
+
         window.navToPick = () => {
             window.location.href = `pc_pick.html?session=${SESSION_ID}`;
         };

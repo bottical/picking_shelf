@@ -102,15 +102,15 @@
     </div>
 
     <div class="grid">
-        <a href="#" onclick="openLink('pc_inject.html'); return false;" class="card">
+        <a href="javascript:void(0)" onclick="openLink('pc_inject.html')" class="card">
             <h2>📦 投入モード</h2>
             <p>PC画面（入力用）</p>
         </a>
-        <a href="#" onclick="openLink('mobile_wall.html'); return false;" class="card">
+        <a href="javascript:void(0)" onclick="openLink('mobile_wall.html')" class="card">
             <h2>📱 モバイルウォール</h2>
             <p>9間口表示</p>
         </a>
-        <a href="#" onclick="openLink('pc_pick.html'); return false;" class="card">
+        <a href="javascript:void(0)" onclick="openLink('pc_pick.html')" class="card">
             <h2>🛒 ピッキングモード</h2>
             <p>PC画面（出庫用）</p>
         </a>
@@ -118,46 +118,45 @@
 
     <button onclick="resetDemo()" class="reset-btn">このセッションをリセット</button>
 
-    <script>
-        <script type="module">
-            import {initializeApp} from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
-            import {getDatabase, ref, remove} from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+        import { getDatabase, ref, remove } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
-            // TODO: Replace with your Firebase Config
-  const firebaseConfig = {
-    apiKey: "AIzaSyBlhRZK40uElE16XBPrppyixnE6Ei6zZUs",
-    authDomain: "picking-shelf.firebaseapp.com",
-    databaseURL: "https://picking-shelf-default-rtdb.firebaseio.com",
-    projectId: "picking-shelf",
-    storageBucket: "picking-shelf.firebasestorage.app",
-    messagingSenderId: "665778536175",
-    appId: "1:665778536175:web:48017831cf6256a5e5e51a"
-  };
-            let db;
-            try {
+        // TODO: Replace with your Firebase Config
+        const firebaseConfig = {
+            apiKey: "AIzaSyBlhRZK40uElE16XBPrppyixnE6Ei6zZUs",
+            authDomain: "picking-shelf.firebaseapp.com",
+            databaseURL: "https://picking-shelf-default-rtdb.firebaseio.com",
+            projectId: "picking-shelf",
+            storageBucket: "picking-shelf.firebasestorage.app",
+            messagingSenderId: "665778536175",
+            appId: "1:665778536175:web:48017831cf6256a5e5e51a"
+        };
+        let db;
+        try {
             const app = initializeApp(firebaseConfig);
             db = getDatabase(app);
-        } catch(e) {
-                console.error("Firebase Init Error", e);
+        } catch (e) {
+            console.error("Firebase Init Error", e);
         }
 
         window.openLink = (page) => {
             const sid = document.getElementById('sessionId').value || 'demo';
-            window.open(`${page}?session=${sid}`, '_blank');
+            window.location.href = `${page}?session=${sid}`;
         };
 
         window.resetDemo = async () => {
-            if(!db) {
+            if (!db) {
                 alert("Firebaseが設定されていません。コード内のfirebaseConfigを更新してください。");
-            return;
+                return;
             }
             if (confirm("現在のセッションデータを完全に消去してもよろしいですか？")) {
                 const sid = document.getElementById('sessionId').value || 'demo';
-            const sessionRef = ref(db, `pickcart_demo/${sid}`);
+                const sessionRef = ref(db, `pickcart_demo/${sid}`);
                 try {
                     await remove(sessionRef);
                     alert("リセット完了 (RTDB)");
-                } catch(e) {
+                } catch (e) {
                     alert("リセット失敗: " + e.message);
                 }
             }
