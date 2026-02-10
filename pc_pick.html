@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>CODEX - Pick Mode</title>
+    <title>CODEX - ピッキングモード</title>
     <style>
         :root {
             --primary: #8b5cf6;
@@ -136,36 +136,35 @@
 <body>
     <header>
         <div style="display:flex; align-items:center; gap:1rem;">
-            <h2>🛒 Pick Mode</h2>
+            <h2>🛒 ピッキングモード</h2>
         </div>
         <div>
-            <a href="pc_inject.html" class="btn btn-outline" style="text-decoration:none;">Switch to Inject ➔</a>
+            <a href="pc_inject.html" class="btn btn-outline" style="text-decoration:none;">投入モードへ ➔</a>
         </div>
     </header>
 
     <div class="container">
         <div class="sidebar">
-            <h3>Start Picking</h3>
-            <input type="text" id="listInput" placeholder="Scan List ID (e.g. LIST-01)..." autofocus>
+            <h3>ピッキング開始</h3>
+            <input type="text" id="listInput" placeholder="リストIDをスキャン (例: LIST-01)..." autofocus>
 
             <div style="margin-top:2rem;">
-                <p style="font-size:0.8rem; color:#666;">Debug Tools:</p>
-                <button class="btn btn-outline" style="width:100%;" onclick="createSampleList()">+ Create Sample
-                    List</button>
+                <p style="font-size:0.8rem; color:#666;">デバッグツール:</p>
+                <button class="btn btn-outline" style="width:100%;" onclick="createSampleList()">+ サンプルリスト作成</button>
             </div>
         </div>
 
         <div class="main-list">
-            <h3 id="currentListTitle">No List Selected</h3>
+            <h3 id="currentListTitle">リスト未選択</h3>
 
             <table>
                 <thead>
                     <tr>
                         <th>JAN</th>
-                        <th>QTY</th>
-                        <th>LOCATION</th>
-                        <th>STATUS</th>
-                        <th>ACTION</th>
+                        <th>数量</th>
+                        <th>ロケーション</th>
+                        <th>状態</th>
+                        <th>操作</th>
                     </tr>
                 </thead>
                 <tbody id="pickTable">
@@ -222,13 +221,13 @@
         });
 
         function createSampleList() {
-            if (!app.data) return alert("System not initialized. Go to Inject page first.");
+            if (!app.data) return alert("システムが初期化されていません。先に投入ページを開いてください。");
 
             const listId = "LIST-" + Math.floor(Math.random() * 1000);
 
             // Find inputs from existing slots if any, or random
             const filledSlots = Object.values(app.data.slots);
-            if (filledSlots.length === 0) return alert("No items injected yet!");
+            if (filledSlots.length === 0) return alert("商品が投入されていません！");
 
             // Pick random 3 items
             const lines = [];
@@ -246,17 +245,17 @@
             app.data = newData;
             app.save();
 
-            alert(`Created ${listId}`);
+            alert(`リスト ${listId} を作成しました`);
             loadList(listId);
         }
 
         function loadList(id) {
             if (!app.data.pickLists || !app.data.pickLists[id]) {
-                alert("List not found!");
+                alert("リストが見つかりません！");
                 return;
             }
             currentListId = id;
-            document.getElementById('currentListTitle').textContent = `Now Picking: ${id}`;
+            document.getElementById('currentListTitle').textContent = `ピッキング中: ${id}`;
             document.getElementById('listInput').value = '';
 
             // Activate first instructions? 
@@ -327,7 +326,7 @@
 
                 // Find Location
                 const entry = Object.entries(app.data.slots).find(([k, v]) => v.sku === line.jan);
-                const location = entry ? entry[0] : "NOT INJECTED";
+                const location = entry ? entry[0] : "未投入";
 
                 const displayJan = line.jan.slice ? line.jan.slice(-4) : line.jan;
 
@@ -335,10 +334,10 @@
                     <td>...${displayJan}</td>
                     <td style="font-weight:bold; font-size:1.2em;">${line.qty}</td>
                     <td><span class="location-tag">${location}</span></td>
-                    <td><span class="status-badge ${line.status === 'DONE' ? 'status-done' : 'status-pending'}">${line.status}</span></td>
+                    <td><span class="status-badge ${line.status === 'DONE' ? 'status-done' : 'status-pending'}">${line.status === 'DONE' ? '完了' : '未完了'}</span></td>
                     <td>
                         ${line.status === 'PENDING'
-                        ? `<button class="btn btn-primary" onclick="completeLine(${idx})">Done</button>`
+                        ? `<button class="btn btn-primary" onclick="completeLine(${idx})">完了</button>`
                         : '✔'}
                     </td>
                 `;

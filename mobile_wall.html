@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>CODEX - Mobile Wall</title>
+    <title>CODEX - モバイルウォール</title>
     <style>
         :root {
             --bg: #0f172a;
@@ -188,7 +188,7 @@
                 // Logic: check if any slot in this bay is filled.
                 const hasItems = Object.keys(this.state.slots).some(k => k.startsWith(`${bayId}-`));
                 if (hasItems) {
-                    alert("Cannot split occupied bay!");
+                    alert("使用中の間口は分割できません！");
                     return;
                 }
 

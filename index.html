@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Demo Portal</title>
+    <title>デモポータル</title>
     <style>
         :root {
             --primary: #2563eb;
@@ -91,33 +91,33 @@
 
 <body>
 
-    <h1>CODEX DEMO</h1>
-    <p>Please open these in separate tabs/windows.</p>
+    <h1>CODEX デモ</h1>
+    <p>以下の画面を別々のタブまたはウィンドウで開いてください。</p>
 
     <div class="grid">
         <a href="pc_inject.html" target="_blank" class="card">
-            <h2>📦 Inject Mode</h2>
-            <p>PC Screen for Input</p>
+            <h2>📦 投入モード</h2>
+            <p>PC画面（入力用）</p>
         </a>
         <a href="mobile_wall.html" target="_blank" class="card">
-            <h2>📱 Mobile Wall</h2>
-            <p>9-Bay Display</p>
+            <h2>📱 モバイルウォール</h2>
+            <p>9間口表示</p>
         </a>
         <a href="pc_pick.html" target="_blank" class="card">
-            <h2>🛒 Pick Mode</h2>
-            <p>PC Screen for Output</p>
+            <h2>🛒 ピッキングモード</h2>
+            <p>PC画面（出庫用）</p>
         </a>
     </div>
 
-    <button onclick="resetDemo()" class="reset-btn">Reset All Data</button>
+    <button onclick="resetDemo()" class="reset-btn">全データをリセット</button>
 
     <script>
         function resetDemo() {
-            if (confirm("Are you sure you want to clear all demo data?")) {
+            if (confirm("全てのデモデータを消去してもよろしいですか？")) {
                 localStorage.removeItem('PICKCART_STATE_V1');
                 const bc = new BroadcastChannel('pickcart_demo');
                 bc.postMessage({ type: 'RESET' });
-                alert("Data Reset Complete.");
+                alert("データリセット完了");
             }
         }
     </script>

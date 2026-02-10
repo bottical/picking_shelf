@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>CODEX - Inject Mode</title>
+    <title>CODEX - 投入モード</title>
     <style>
         :root {
             --primary: #2563eb;
@@ -229,11 +229,11 @@
 <body>
     <header>
         <div style="display:flex; align-items:center; gap:1rem;">
-            <h2>📦 Inject Mode</h2>
-            <span id="connectionStatus" style="font-size:0.8rem; color:var(--success);">● Live</span>
+            <h2>📦 投入モード</h2>
+            <span id="connectionStatus" style="font-size:0.8rem; color:var(--success);">● 接続中</span>
         </div>
         <div>
-            <a href="pc_pick.html" class="btn btn-outline" style="text-decoration:none;">Switch to Pick ➔</a>
+            <a href="pc_pick.html" class="btn btn-outline" style="text-decoration:none;">ピッキングモードへ ➔</a>
         </div>
     </header>
 
@@ -241,26 +241,26 @@
         <!-- SIDEBAR -->
         <div class="sidebar">
             <div class="card">
-                <h3>1. Load Data</h3>
-                <textarea id="csvInput" rows="3" placeholder="Paste JAN codes...">4901234567890
+                <h3>1. データ読込</h3>
+                <textarea id="csvInput" rows="3" placeholder="JANコードを貼り付け...">4901234567890
 4901234567891
 4901234567892
 4901234567893</textarea>
                 <div style="margin-top:0.5rem; display:flex; gap:0.5rem;">
-                    <button class="btn btn-primary" style="flex:1;" onclick="loadCsv()">Load CSV</button>
-                    <button class="btn btn-outline" onclick="resetAll()">Reset</button>
+                    <button class="btn btn-primary" style="flex:1;" onclick="loadCsv()">CSV読込</button>
+                    <button class="btn btn-outline" onclick="resetAll()">リセット</button>
                 </div>
             </div>
 
             <div class="card">
-                <h3>2. Scan Item</h3>
-                <input type="text" id="scanInput" placeholder="Scan JAN..." autofocus autocomplete="off">
+                <h3>2. 商品スキャン</h3>
+                <input type="text" id="scanInput" placeholder="JANスキャン..." autofocus autocomplete="off">
                 <div id="scanMsg" class="alert hidden"></div>
             </div>
 
             <div id="instructionPanel" class="card hidden">
-                <h3 style="color:var(--primary);">👉 Action Required</h3>
-                <p id="instructionText">Select a slot on the right.</p>
+                <h3 style="color:var(--primary);">👉 要アクション</h3>
+                <p id="instructionText">右側のスロットを選択してください。</p>
             </div>
         </div>
 
@@ -339,7 +339,7 @@
         });
 
         function resetAll() {
-            if (confirm("Reset entire system?")) {
+            if (confirm("システム全体をリセットしますか？")) {
                 app.save(JSON.parse(JSON.stringify(DEFAULT_STATE))); // Deep copy default
                 location.reload();
             }
@@ -349,7 +349,7 @@
             const lines = document.getElementById('csvInput').value.split('\n').filter(x => x.trim());
             const newState = { ...app.state, injectList: lines };
             app.save(newState);
-            alert(`Loaded ${lines.length} SKUs`);
+            alert(`${lines.length} 件のSKUを読み込みました`);
         }
 
         function handleScan(jan) {
@@ -366,7 +366,7 @@
 
             // 1. Check if in Inject List
             if (!state.injectList.includes(jan)) {
-                msgEl.textContent = `❌ SKU ${jan} not found in CSV`;
+                msgEl.textContent = `❌ SKU ${jan} はCSVに見つかりません`;
                 msgEl.className = 'alert error';
                 document.getElementById('scanInput').value = '';
                 return;
@@ -375,7 +375,7 @@
             // 2. Check Duplicates
             const existing = Object.values(state.slots).find(s => s.sku === jan);
             if (existing) {
-                msgEl.textContent = `⚠️ SKU ${jan} already injected`;
+                msgEl.textContent = `⚠️ SKU ${jan} は既に投入済みです`;
                 msgEl.className = 'alert error'; // Using error style for visibility
                 document.getElementById('scanInput').value = '';
                 return;
@@ -383,10 +383,10 @@
 
             // 3. Valid -> Enter Select Mode
             currentScannedJan = jan;
-            msgEl.textContent = `✅ Scan OK: ${jan}`;
+            msgEl.textContent = `✅ スキャンOK: ${jan}`;
             msgEl.className = 'alert info';
             instEl.classList.remove('hidden');
-            instText.textContent = "Select an empty slot on the right to assign.";
+            instText.textContent = "右側の空きスロットを選択して割り当ててください。";
 
             // Re-render to show highlighting
             render();
@@ -400,7 +400,7 @@
 
             // Prevent overwrite
             if (state.slots[slotKey]) {
-                alert("Slot already occupied!");
+                alert("そのスロットは既に使用されています！");
                 return;
             }
 
@@ -452,10 +452,10 @@
                         slot.textContent = slotData.sku.slice(-4);
                     } else if (currentScannedJan) {
                         slot.classList.add('active');
-                        slot.textContent = "SELECT";
+                        slot.textContent = "選択";
                         slot.onclick = () => handleSlotClick(b, s);
                     } else {
-                        slot.textContent = "EMPTY";
+                        slot.textContent = "空";
                     }
 
                     container.appendChild(slot);
