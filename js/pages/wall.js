@@ -374,9 +374,38 @@
 
                 if (isPickingTarget) {
                     block.style.flexDirection = 'column';
-                            <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">...${targetJan.slice(-4)}</div>
-                            <div style="line-height: 1; font-weight: 900;">${pickData.totalQty || pickData.qty}</div>
-                        `;
+                    if (pickData.pendingQty === 0) {
+                        block.classList.add('picking-done');
+                        if (pickData.skus && pickData.skus.length > 1) {
+                            block.innerHTML = `
+                                <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">完了済: ${pickData.skus.length} SKU</div>
+                                <div style="line-height: 1; font-weight: 900;">${pickData.totalQty || pickData.qty}</div>
+                            `;
+                        } else {
+                            const targetJan = pickData.skus ? pickData.skus[0] : (skus[0] || '----');
+                            block.innerHTML = `
+                                <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">...${targetJan.slice(-4)}</div>
+                                <div style="line-height: 1; font-weight: 900;">${pickData.totalQty || pickData.qty}</div>
+                            `;
+                        }
+                    } else {
+                        block.classList.add('picking');
+                        if (pickData.skus && pickData.skus.length > 1) {
+                            block.innerHTML = `
+                                <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">対象: ${pickData.skus.length} SKU</div>
+                                <div style="line-height: 1; font-weight: 900;">${pickData.pendingQty}</div>
+                            `;
+                        } else {
+                            const targetJan = pickData.skus ? pickData.skus[0] : (skus[0] || '----');
+                            block.innerHTML = `
+                                <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">...${targetJan.slice(-4)}</div>
+                                <div style="line-height: 1; font-weight: 900;">${pickData.pendingQty}</div>
+                            `;
+                        }
+                        block.onclick = (e) => {
+                            e.stopPropagation();
+                            markSlotDone(slotKey, state, stateMgr);
+                        };
                     }
                     block.style.setProperty('--pick-color', getPickColor(s));
                 } else if (skus.length > 0) {
