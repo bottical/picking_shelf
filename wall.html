@@ -35,7 +35,9 @@
             flex-direction: column;
             position: relative;
             border: 1px solid #1e293b;
-            flex: 1;
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: hidden;
         }
         .screen-header {
             background: #1e293b;
@@ -46,39 +48,46 @@
             align-items: center;
             color: #94a3b8;
             font-weight: 800;
+            flex-shrink: 0;
         }
         .live-badge {
             color: #22c55e;
         }
         .screen-body {
-            flex: 1;
+            flex: 1 1 auto;
             display: grid;
             gap: 2px;
             padding: 2px;
+            min-height: 0;
+            overflow: hidden;
         }
         
         /* Dynamic grids for split counts (Max 6) */
-        .grid-split-1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
-        .grid-split-2-p { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
-        .grid-split-2-l { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr; }
-        .grid-split-3 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
-        .grid-split-4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
-        .grid-split-5-p { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; }
-        .grid-split-5-l { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; }
-        .grid-split-6-p { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; }
-        .grid-split-6-l { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; }
+        .grid-split-1 { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr); }
+        .grid-split-2-p { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
+        .grid-split-2-l { grid-template-columns: 1fr 1fr; grid-template-rows: minmax(0, 1fr); }
+        .grid-split-3 { grid-template-columns: 1fr 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
+        .grid-split-4 { grid-template-columns: 1fr 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
+        .grid-split-5-p { grid-template-columns: 1fr 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); }
+        .grid-split-5-l { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
+        .grid-split-6-p { grid-template-columns: 1fr 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); }
+        .grid-split-6-l { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
 
         .block {
             background: #1a1a1a;
             display: flex;
             align-items: center;
             justify-content: center;
+            text-align: center;
             font-size: 1.2rem;
             font-weight: 800;
             color: #444;
             border-radius: 4px;
             transition: 0.2s;
             position: relative;
+            min-height: 0;
+            min-width: 0;
+            overflow: hidden;
         }
         .block.filled {
             background: var(--pick-color);
