@@ -259,29 +259,68 @@
             scanMsg.classList.remove('hidden');
         };
 
+        const csvConfigBtn = document.getElementById('csvConfigBtn');
+        const csvConfigModal = document.getElementById('csvConfigModal');
+        const csvConfigCancel = document.getElementById('csvConfigCancel');
+        const csvConfigSave = document.getElementById('csvConfigSave');
+        const csvSkipHeader = document.getElementById('csvSkipHeader');
+        const csvColPick = document.getElementById('csvColPick');
+        const csvColJan = document.getElementById('csvColJan');
+        const csvColQty = document.getElementById('csvColQty');
+
+        csvConfigBtn.addEventListener('click', () => {
+            const format = stateMgr.state?.config?.csvFormat || { skipHeader: true, pickCol: 1, janCol: 2, qtyCol: 3 };
+            csvSkipHeader.checked = format.skipHeader;
+            csvColPick.value = format.pickCol;
+            csvColJan.value = format.janCol;
+            csvColQty.value = format.qtyCol;
+            csvConfigModal.classList.remove('hidden');
+        });
+
+        csvConfigCancel.addEventListener('click', () => {
+            csvConfigModal.classList.add('hidden');
+        });
+
+        csvConfigSave.addEventListener('click', () => {
+            const format = {
+                skipHeader: csvSkipHeader.checked,
+                pickCol: parseInt(csvColPick.value, 10) || 1,
+                janCol: parseInt(csvColJan.value, 10) || 2,
+                qtyCol: parseInt(csvColQty.value, 10) || 3
+            };
+            const currentConfig = stateMgr.state?.config || {};
+            stateMgr.update({ config: { ...currentConfig, csvFormat: format } });
+            csvConfigModal.classList.add('hidden');
+            alert('CSVの列取り込み設定を更新しました。');
+        });
+
         loadCsvBtn.addEventListener('click', () => {
             const file = document.getElementById('csvFile').files[0];
             if (!file) return alert("ファイルを選択してください");
+
+            const format = stateMgr.state?.config?.csvFormat || { skipHeader: true, pickCol: 1, janCol: 2, qtyCol: 3 };
+            const idxPick = format.pickCol - 1;
+            const idxJan = format.janCol - 1;
+            const idxQty = format.qtyCol - 1;
 
             const reader = new FileReader();
             reader.onload = (e) => {
                 const text = e.target.result;
                 const lines = text.split(/\r?\n/).filter(x => x.trim());
 
-                // Skip header
-                if (lines.length > 0) lines.shift();
+                if (format.skipHeader && lines.length > 0) lines.shift();
 
-                const aggregatedInject = {}; // { jan: quantity }
-                const groupedPick = {};    // { pickingNo: [{jan, qty, status}] }
+                const aggregatedInject = {};
+                const groupedPick = {};
 
                 lines.forEach(line => {
-                    // split by comma or dot
-                    const parts = line.split(/[.,]/);
-                    if (parts.length < 3) return;
+                    const parts = line.split(',');
+                    const maxIdx = Math.max(idxPick, idxJan, idxQty);
+                    if (parts.length <= maxIdx) return;
 
-                    const pickNo = parts[0].trim();
-                    const jan = normalizeJan(parts[1]);
-                    const qty = parseInt(parts[2]) || 0;
+                    const pickNo = parts[idxPick].trim();
+                    const jan = normalizeJan(parts[idxJan]);
+                    const qty = parseInt(parts[idxQty]) || 0;
 
                     if (!jan || !pickNo) return;
 
