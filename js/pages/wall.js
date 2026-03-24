@@ -253,10 +253,7 @@
 
                 const allDone = lines.every(l => l.status === 'DONE');
                 if (allDone) {
-                    updates.currentPickingNo = firebase.firestore.FieldValue.delete();
                     updates.activePick = {};
-                    updates.mode = 'INJECT';
-                    alert("すべてのアイテムのピッキングが完了しました。\n投入モードに戻ります。");
                 } else {
                     const newActivePick = {};
                     lines.forEach(l => {
