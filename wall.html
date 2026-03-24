@@ -79,9 +79,10 @@
             align-items: center;
             justify-content: center;
             text-align: center;
-            font-size: 1.2rem;
-            font-weight: 800;
-            color: #444;
+            font-size: 2rem; /* Larger font size */
+            font-weight: 900;
+            color: #ffffff; /* Bright white text */
+            border: 2px solid rgba(255, 255, 255, 0.4); /* Clear white border */
             border-radius: 4px;
             transition: 0.2s;
             position: relative;
@@ -92,12 +93,14 @@
         .block.filled {
             background: var(--pick-color);
             color: white;
+            border-color: transparent; /* Remove border for filled state */
             box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.2);
         }
         .block.picking {
             background: var(--pick-color);
             color: white;
             font-size: 3.5rem;
+            border-color: transparent;
             box-shadow: 0 0 20px var(--pick-color);
             z-index: 10;
             opacity: 1;
@@ -105,15 +108,16 @@
         .block.picking-done {
             background: black;
             color: var(--pick-color);
-            border: 4px solid var(--pick-color);
+            border: 4px solid var(--pick-color); /* Overrides empty state border */
             font-size: 3.5rem;
             z-index: 5;
             opacity: 1;
         }
         .block.grayed-out {
             background: #111;
-            color: #333;
-            opacity: 0.3;
+            color: #555;
+            border-color: #333;
+            opacity: 0.4;
             filter: grayscale(1);
         }
         .block.inject-ready {
