@@ -34,15 +34,13 @@
                     return skus.includes(line.jan);
                 });
                 
-                if (entry) {
-                    const slotKey = entry[0];
-                    if (!newActivePick[slotKey]) {
-                        newActivePick[slotKey] = { totalQty: 0, skus: [], pickNo: id };
-                    }
-                    newActivePick[slotKey].totalQty += line.qty;
-                    if (!newActivePick[slotKey].skus.includes(line.jan)) {
-                        newActivePick[slotKey].skus.push(line.jan);
-                    }
+                const slotKey = entry ? entry[0] : 'UNALLOCATED';
+                if (!newActivePick[slotKey]) {
+                    newActivePick[slotKey] = { totalQty: 0, skus: [], pickNo: id };
+                }
+                newActivePick[slotKey].totalQty += line.qty;
+                if (!newActivePick[slotKey].skus.includes(line.jan)) {
+                    newActivePick[slotKey].skus.push(line.jan);
                 }
             });
 
@@ -76,7 +74,7 @@
                     const skus = v.skus || (v.sku ? [v.sku] : []);
                     return skus.includes(line.jan);
                 });
-                const location = entry ? entry[0] : "未投入";
+                const location = entry ? entry[0] : "その他";
                 const subId = entry ? location.split('-')[1] : null;
 
                 const tr = document.createElement('tr');
@@ -87,7 +85,7 @@
                     <td style="padding:1rem; font-weight:600;">...${line.jan.slice(-4)}</td>
                     <td style="padding:1rem; font-size:1.25rem; font-weight:800;">${line.qty}</td>
                     <td style="padding:1rem;">
-                        <span style="padding:0.25rem 0.75rem; border-radius:4px; font-weight:800; color:white; background:${subId ? `hsl(${(subId - 1) * 60 + 200}, 70%, 50%)` : '#cbd5e1'}">
+                        <span style="padding:0.25rem 0.75rem; border-radius:4px; font-weight:800; color:white; background:${entry ? `hsl(${(subId - 1) * 60 + 200}, 70%, 50%)` : '#eab308'}">
                             ${location}
                         </span>
                     </td>
@@ -140,15 +138,13 @@
                         const skus = v.skus || (v.sku ? [v.sku] : []);
                         return skus.includes(l.jan);
                     });
-                    if (entry) {
-                        const slotKey = entry[0];
-                        if (!newActivePick[slotKey]) {
-                            newActivePick[slotKey] = { totalQty: 0, skus: [], pickNo: currentListId };
-                        }
-                        newActivePick[slotKey].totalQty += l.qty;
-                        if (!newActivePick[slotKey].skus.includes(l.jan)) {
-                            newActivePick[slotKey].skus.push(l.jan);
-                        }
+                    const slotKey = entry ? entry[0] : 'UNALLOCATED';
+                    if (!newActivePick[slotKey]) {
+                        newActivePick[slotKey] = { totalQty: 0, skus: [], pickNo: currentListId };
+                    }
+                    newActivePick[slotKey].totalQty += l.qty;
+                    if (!newActivePick[slotKey].skus.includes(l.jan)) {
+                        newActivePick[slotKey].skus.push(l.jan);
                     }
                 });
                 updates.activePick = newActivePick;

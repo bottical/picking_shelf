@@ -445,19 +445,25 @@
         const renderBay10 = (state) => {
             const injectList = state.injectList || {};
             const slots = state.slots || {};
-            const allocatedSkus = new Set(Object.values(slots).map(s => s.sku));
+            const allocatedSkus = new Set();
+            Object.values(slots).forEach(slot => {
+                const skus = slot.skus || (slot.sku ? [slot.sku] : []);
+                skus.forEach(sku => allocatedSkus.add(sku));
+            });
             const unallocatedCount = Object.keys(injectList).filter(jan => !allocatedSkus.has(jan)).length;
             const nextBayNo = (state.config?.bays || 9) + 1;
+            const isPickingTarget = state.mode === 'PICK' && state.activePick?.['UNALLOCATED'];
 
             bay10Container.innerHTML = `
-                <div class="mobile-screen" style="flex-direction: row; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border: 1px solid #334155; border-radius: 6px; background: #1e293b;">
+                <div class="mobile-screen" style="flex-direction: row; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border: 1px solid ${isPickingTarget ? '#eab308' : '#334155'}; border-radius: 6px; background: ${isPickingTarget ? '#ca8a04' : '#1e293b'}; color: white;">
                     <div style="display: flex; flex-direction: column;">
-                        <span style="color: #94a3b8; font-size: 0.7rem; font-weight: 800;">No.${nextBayNo}</span>
-                        <span style="color: white; font-size: 1.1rem; font-weight: 800;">その他（未割り当て）</span>
+                        <span style="color: ${isPickingTarget ? '#fefce8' : '#94a3b8'}; font-size: 0.7rem; font-weight: 800;">No.${nextBayNo}</span>
+                        <span style="font-size: 1.1rem; font-weight: 800;">その他（未割り当て）</span>
                     </div>
                     <div style="display: flex; align-items: baseline; gap: 6px;">
-                        <span style="color: #f59e0b; font-size: 2rem; font-weight: 800; line-height: 1;">${unallocatedCount}</span>
-                        <span style="color: #64748b; font-size: 0.8rem; font-weight: 800;">SKU</span>
+                        ${isPickingTarget ? `<span style="font-size: 1rem; font-weight: 800; background: #fef08a; color: #854d0e; padding: 2px 8px; border-radius: 12px; margin-right: 4px;">PICK対象</span>` : ''}
+                        <span style="color: ${isPickingTarget ? 'white' : '#f59e0b'}; font-size: 2rem; font-weight: 800; line-height: 1;">${unallocatedCount}</span>
+                        <span style="color: ${isPickingTarget ? '#fefce8' : '#64748b'}; font-size: 0.8rem; font-weight: 800;">SKU</span>
                     </div>
                 </div>
             `;
@@ -469,48 +475,65 @@
         const renderUnallocatedDetail = (state) => {
             const injectList = state.injectList || {};
             const slots = state.slots || {};
-            const allocatedSkus = new Set(Object.values(slots).map(s => s.sku));
-            const unallocatedSkus = Object.keys(injectList)
-                .filter(jan => !allocatedSkus.has(jan))
-                .map(jan => ({ jan, qty: injectList[jan] }));
+            const allocatedSkus = new Set();
+            Object.values(slots).forEach(slot => {
+                const skus = slot.skus || (slot.sku ? [slot.sku] : []);
+                skus.forEach(sku => allocatedSkus.add(sku));
+            });
+            const unallocatedKeys = Object.keys(injectList).filter(jan => !allocatedSkus.has(jan));
+            const skuCount = unallocatedKeys.length;
+            const totalQty = unallocatedKeys.reduce((sum, jan) => sum + injectList[jan], 0);
 
             const container = document.createElement('div');
-            container.style.flex = '1';
-            container.style.display = 'flex';
-            container.style.flexDirection = 'column';
-            container.style.background = '#0f172a';
-            container.style.padding = '1rem';
-            container.style.overflowY = 'auto';
-            container.style.gap = '0.5rem';
+            container.className = 'mobile-screen';
+            const nextBayNo = (state.config?.bays || 9) + 1;
+            const isPickingTarget = state.mode === 'PICK' && state.activePick?.['UNALLOCATED'];
 
-            if (unallocatedSkus.length === 0) {
-                container.innerHTML = `<div style="color:#94a3b8; text-align:center; margin-top:3rem; font-weight:700;">未割り当ての商品はありません</div>`;
-                return container;
-            }
+            container.innerHTML = `
+                <div class="screen-header">
+                    <span>No.${nextBayNo} (その他)</span>
+                    <span class="live-badge">● LIVE</span>
+                </div>
+            `;
 
-            unallocatedSkus.forEach(item => {
-                const card = document.createElement('div');
-                card.style.background = '#1e293b';
-                card.style.border = '1px solid #334155';
-                card.style.borderRadius = '8px';
-                card.style.padding = '1rem';
-                card.style.display = 'flex';
-                card.style.justifyContent = 'space-between';
-                card.style.alignItems = 'center';
+            const body = document.createElement('div');
+            body.className = 'screen-body grid-split-1';
 
-                card.innerHTML = `
-                    <div style="display:flex; flex-direction:column;">
-                        <span style="color:#94a3b8; font-size:0.8rem; font-weight:800;">JAN</span>
-                        <span style="color:white; font-size:1.2rem; font-weight:800; font-family:monospace;">${item.jan}</span>
-                    </div>
-                    <div style="display:flex; align-items:baseline; gap:0.5rem;">
-                        <span style="color:#f59e0b; font-size:1.8rem; font-weight:900;">${item.qty}</span>
-                        <span style="color:#94a3b8; font-size:0.8rem; font-weight:800;">個</span>
-                    </div>
+            const block = document.createElement('div');
+            block.className = 'block';
+
+            if (isPickingTarget) {
+                const pickData = state.activePick['UNALLOCATED'];
+                block.classList.add('picking');
+                block.style.flexDirection = 'column';
+                if (pickData.skus && pickData.skus.length > 1) {
+                    block.innerHTML = `
+                        <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">対象: ${pickData.skus.length} SKU</div>
+                        <div style="line-height: 1; font-weight: 900;">${pickData.totalQty || pickData.qty}</div>
+                    `;
+                } else {
+                    const targetJan = pickData.skus ? pickData.skus[0] : '----';
+                    block.innerHTML = `
+                        <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">...${targetJan.slice(-4)}</div>
+                        <div style="line-height: 1; font-weight: 900;">${pickData.totalQty || pickData.qty}</div>
+                    `;
+                }
+                block.style.setProperty('--pick-color', '#eab308'); // Yellow indicator for others
+            } else if (skuCount > 0) {
+                if (state.mode === 'PICK') block.classList.add('grayed-out');
+                else block.classList.add('filled');
+                block.style.flexDirection = 'column';
+                block.innerHTML = `
+                    <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">${skuCount} SKU</div>
+                    <div style="line-height: 1; font-weight: 900;">${totalQty} 個</div>
                 `;
-                container.appendChild(card);
-            });
-
+                block.style.setProperty('--pick-color', '#334155');
+            } else {
+                block.textContent = "空";
+            }
+            
+            body.appendChild(block);
+            container.appendChild(body);
             return container;
         };
 
@@ -582,11 +605,21 @@
                     const nextBayNo = config.bays + 1;
                     const injectList = state.injectList || {};
                     const slots = state.slots || {};
-                    const allocatedSkus = new Set(Object.values(slots).map(s => s.sku));
+                    const allocatedSkus = new Set();
+                    Object.values(slots).forEach(slot => {
+                        const skus = slot.skus || (slot.sku ? [slot.sku] : []);
+                        skus.forEach(sku => allocatedSkus.add(sku));
+                    });
                     const unallocatedCount = Object.keys(injectList).filter(jan => !allocatedSkus.has(jan)).length;
+                    const isPickingTarget = state.mode === 'PICK' && state.activePick?.['UNALLOCATED'];
 
                     const othersBtn = document.createElement('div');
                     othersBtn.className = 'selector-btn';
+                    if (isPickingTarget) {
+                        othersBtn.style.background = '#eab308';
+                        othersBtn.style.color = 'white';
+                        othersBtn.style.border = '2px solid #fef08a';
+                    }
                     othersBtn.style.gridColumn = '1 / -1';
                     othersBtn.style.display = 'flex';
                     othersBtn.style.flexDirection = 'row';
@@ -595,12 +628,13 @@
                     othersBtn.style.padding = '1.5rem';
                     othersBtn.innerHTML = `
                         <div style="text-align: left; display:flex; flex-direction:column; align-items:flex-start;">
-                            <span style="color: #94a3b8; font-size: 0.8rem; font-weight: 800;">No.${nextBayNo}</span>
+                            <span style="color: ${isPickingTarget ? '#fefce8' : '#94a3b8'}; font-size: 0.8rem; font-weight: 800;">No.${nextBayNo}</span>
                             <span style="color: white; font-size: 1.2rem; font-weight: 800;">その他（未割り当て）</span>
                         </div>
                         <div style="display:flex; align-items:baseline; gap:0.5rem;">
-                            <span style="font-size: 1.8rem; font-weight: 900; color: #f59e0b;">${unallocatedCount}</span>
-                            <span style="color:#94a3b8; font-size:0.8rem; font-weight:700;">SKU</span>
+                            ${isPickingTarget ? `<span style="font-size: 0.9rem; font-weight: 800; background: white; color: #ca8a04; padding: 2px 6px; border-radius: 8px;">対象</span>` : ''}
+                            <span style="font-size: 1.8rem; font-weight: 900; color: ${isPickingTarget ? 'white' : '#f59e0b'};">${unallocatedCount}</span>
+                            <span style="color:${isPickingTarget ? '#fefce8' : '#94a3b8'}; font-size:0.8rem; font-weight:700;">SKU</span>
                         </div>
                     `;
                     othersBtn.onclick = () => {
