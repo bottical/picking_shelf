@@ -22,7 +22,6 @@
         const loadList = (id) => {
             if (!stateMgr.state.pickLists?.[id]) return alert("ピッキングNo.が見つかりません！");
             currentListId = id;
-            currentListTitle.textContent = `ピッキング中: ${id}`;
             listIdInput.value = '';
 
             const lines = stateMgr.state.pickLists[id];
@@ -58,7 +57,6 @@
             // Auto-sync currentPickingNo from global state
             if (state.currentPickingNo && state.currentPickingNo !== currentListId) {
                 currentListId = state.currentPickingNo;
-                currentListTitle.textContent = `ピッキング中: ${currentListId}`;
             } else if (!state.currentPickingNo) {
                 currentListId = null;
                 currentListTitle.textContent = `ピッキングNo.を入力してください`;
@@ -72,6 +70,12 @@
             }
 
             const lines = state.pickLists[currentListId];
+            const allCompleted = lines.length > 0 && lines.every(l => l.status === 'DONE');
+            if (allCompleted) {
+                currentListTitle.innerHTML = `<span style="color: red;">完了済み：${currentListId}</span>`;
+            } else {
+                currentListTitle.textContent = `ピッキング中: ${currentListId}`;
+            }
             lines.forEach((line, idx) => {
                 const entry = Object.entries(state.slots || {}).find(([k, v]) => {
                     const skus = v.skus || (v.sku ? [v.sku] : []);
@@ -129,10 +133,7 @@
             const allDone = lines.every(l => l.status === 'DONE');
 
             if (allDone) {
-                updates.currentPickingNo = firebase.firestore.FieldValue.delete();
                 updates.activePick = {};
-                updates.mode = 'INJECT';
-                alert("すべてのアイテムのピッキングが完了しました。\n投入モードに戻ります。");
             } else {
                 const newActivePick = {};
                 lines.forEach(l => {
