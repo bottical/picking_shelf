@@ -8,12 +8,14 @@
     <style>
         html {
             height: 100%;
+            height: -webkit-fill-available;
         }
         body {
             background: #0f172a;
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
             width: 100%; height: 100%;
+            height: -webkit-fill-available;
             overflow: hidden;
             margin: 0;
             display: flex;
@@ -194,9 +196,9 @@
     </div>
 
     <!-- View Containers -->
-    <div id="multiViewContainer" class="wall-grid hidden"></div>
-    <div id="selectorViewContainer" class="hidden" style="padding: 1rem; display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); align-content: start; overflow-y: auto; flex: 1;"></div>
-    <div id="singleViewContainer" class="hidden" style="flex: 1; padding: 2px; display: flex; flex-direction: column;"></div>
+    <div id="multiViewContainer" class="wall-grid hidden" style="flex: 1 1 auto; min-height: 0; overflow-y: auto;"></div>
+    <div id="selectorViewContainer" class="hidden" style="flex: 1 1 auto; min-height: 0; padding: 1rem; display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); align-content: start; overflow-y: auto;"></div>
+    <div id="singleViewContainer" class="hidden" style="flex: 1 1 auto; min-height: 0; padding: 2px; display: flex; flex-direction: column; overflow: hidden;"></div>
 
     <div id="bay10-container" class="hidden" style="padding: 4px; flex-shrink: 0;"></div>
     
