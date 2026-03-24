@@ -36,9 +36,12 @@
                 
                 const slotKey = entry ? entry[0] : 'UNALLOCATED';
                 if (!newActivePick[slotKey]) {
-                    newActivePick[slotKey] = { totalQty: 0, skus: [], pickNo: id };
+                    newActivePick[slotKey] = { totalQty: 0, pendingQty: 0, skus: [], pickNo: id };
                 }
                 newActivePick[slotKey].totalQty += line.qty;
+                if (line.status !== 'DONE') {
+                    newActivePick[slotKey].pendingQty += line.qty;
+                }
                 if (!newActivePick[slotKey].skus.includes(line.jan)) {
                     newActivePick[slotKey].skus.push(line.jan);
                 }
@@ -133,16 +136,18 @@
             } else {
                 const newActivePick = {};
                 lines.forEach(l => {
-                    if (l.status === 'DONE') return;
                     const entry = Object.entries(stateMgr.state.slots || {}).find(([k, v]) => {
                         const skus = v.skus || (v.sku ? [v.sku] : []);
                         return skus.includes(l.jan);
                     });
                     const slotKey = entry ? entry[0] : 'UNALLOCATED';
                     if (!newActivePick[slotKey]) {
-                        newActivePick[slotKey] = { totalQty: 0, skus: [], pickNo: currentListId };
+                        newActivePick[slotKey] = { totalQty: 0, pendingQty: 0, skus: [], pickNo: currentListId };
                     }
                     newActivePick[slotKey].totalQty += l.qty;
+                    if (l.status !== 'DONE') {
+                        newActivePick[slotKey].pendingQty += l.qty;
+                    }
                     if (!newActivePick[slotKey].skus.includes(l.jan)) {
                         newActivePick[slotKey].skus.push(l.jan);
                     }

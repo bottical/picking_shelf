@@ -225,6 +225,64 @@
             document.body.appendChild(overlay);
         };
 
+        const markSlotDone = (slotKey, state, stateMgr) => {
+            const listId = state.currentPickingNo;
+            if (!listId) return;
+            const lines = [...state.pickLists[listId]];
+            let changed = false;
+
+            lines.forEach(l => {
+                if (l.status === 'DONE') return;
+                
+                const entry = Object.entries(state.slots || {}).find(([k, v]) => {
+                    const skus = v.skus || (v.sku ? [v.sku] : []);
+                    return skus.includes(l.jan);
+                });
+                const lineSlotKey = entry ? entry[0] : 'UNALLOCATED';
+
+                if (lineSlotKey === slotKey) {
+                    l.status = 'DONE';
+                    changed = true;
+                }
+            });
+
+            if (changed) {
+                const updates = {
+                    [`pickLists.${listId}`]: lines
+                };
+
+                const allDone = lines.every(l => l.status === 'DONE');
+                if (allDone) {
+                    updates.currentPickingNo = firebase.firestore.FieldValue.delete();
+                    updates.activePick = {};
+                    updates.mode = 'INJECT';
+                    alert("すべてのアイテムのピッキングが完了しました。\n投入モードに戻ります。");
+                } else {
+                    const newActivePick = {};
+                    lines.forEach(l => {
+                        const entry = Object.entries(state.slots || {}).find(([k, v]) => {
+                            const skus = v.skus || (v.sku ? [v.sku] : []);
+                            return skus.includes(l.jan);
+                        });
+                        const lSlotKey = entry ? entry[0] : 'UNALLOCATED';
+
+                        if (!newActivePick[lSlotKey]) {
+                            newActivePick[lSlotKey] = { totalQty: 0, pendingQty: 0, skus: [], pickNo: listId };
+                        }
+                        newActivePick[lSlotKey].totalQty += l.qty;
+                        if (l.status !== 'DONE') {
+                            newActivePick[lSlotKey].pendingQty += l.qty;
+                        }
+                        if (!newActivePick[lSlotKey].skus.includes(l.jan)) {
+                            newActivePick[lSlotKey].skus.push(l.jan);
+                        }
+                    });
+                    updates.activePick = newActivePick;
+                }
+                stateMgr.update(updates);
+            }
+        };
+
         const renderBayContent = (b, state, isSingleView = false) => {
             const isConfigured = state.splits?.[b] !== undefined;
             const splitCount = isConfigured ? state.splits[b] : 1;
@@ -315,16 +373,7 @@
                 const skus = slotData ? (slotData.skus || (slotData.sku ? [slotData.sku] : [])) : [];
 
                 if (isPickingTarget) {
-                    block.classList.add('picking');
                     block.style.flexDirection = 'column';
-                    if (pickData.skus && pickData.skus.length > 1) {
-                        block.innerHTML = `
-                            <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">対象: ${pickData.skus.length} SKU</div>
-                            <div style="line-height: 1; font-weight: 900;">${pickData.totalQty || pickData.qty}</div>
-                        `;
-                    } else {
-                        const targetJan = pickData.skus ? pickData.skus[0] : (skus[0] || '----');
-                        block.innerHTML = `
                             <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">...${targetJan.slice(-4)}</div>
                             <div style="line-height: 1; font-weight: 900;">${pickData.totalQty || pickData.qty}</div>
                         `;
@@ -452,18 +501,20 @@
             });
             const unallocatedCount = Object.keys(injectList).filter(jan => !allocatedSkus.has(jan)).length;
             const nextBayNo = (state.config?.bays || 9) + 1;
-            const isPickingTarget = state.mode === 'PICK' && state.activePick?.['UNALLOCATED'];
+            const pickData = state.activePick?.['UNALLOCATED'];
+            const isPickingTarget = state.mode === 'PICK' && pickData;
+            const isDone = isPickingTarget && pickData.pendingQty === 0;
 
             bay10Container.innerHTML = `
-                <div class="mobile-screen" style="flex-direction: row; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border: 1px solid ${isPickingTarget ? '#eab308' : '#334155'}; border-radius: 6px; background: ${isPickingTarget ? '#ca8a04' : '#1e293b'}; color: white;">
+                <div class="mobile-screen" style="flex-direction: row; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border: 1px solid ${isPickingTarget ? (isDone ? '#eab308' : '#eab308') : '#334155'}; border-radius: 6px; background: ${isPickingTarget ? (isDone ? '#000000' : '#ca8a04') : '#1e293b'}; color: ${isPickingTarget && isDone ? '#eab308' : 'white'};">
                     <div style="display: flex; flex-direction: column;">
-                        <span style="color: ${isPickingTarget ? '#fefce8' : '#94a3b8'}; font-size: 0.7rem; font-weight: 800;">No.${nextBayNo}</span>
+                        <span style="color: ${isPickingTarget ? (isDone ? '#ca8a04' : '#fefce8') : '#94a3b8'}; font-size: 0.7rem; font-weight: 800;">No.${nextBayNo}</span>
                         <span style="font-size: 1.1rem; font-weight: 800;">その他（未割り当て）</span>
                     </div>
                     <div style="display: flex; align-items: baseline; gap: 6px;">
-                        ${isPickingTarget ? `<span style="font-size: 1rem; font-weight: 800; background: #fef08a; color: #854d0e; padding: 2px 8px; border-radius: 12px; margin-right: 4px;">PICK対象</span>` : ''}
-                        <span style="color: ${isPickingTarget ? 'white' : '#f59e0b'}; font-size: 2rem; font-weight: 800; line-height: 1;">${unallocatedCount}</span>
-                        <span style="color: ${isPickingTarget ? '#fefce8' : '#64748b'}; font-size: 0.8rem; font-weight: 800;">SKU</span>
+                        ${isPickingTarget ? `<span style="font-size: 1rem; font-weight: 800; background: ${isDone ? 'transparent' : '#fef08a'}; border: ${isDone ? '2px solid #ca8a04' : 'none'}; color: ${isDone ? '#ca8a04' : '#854d0e'}; padding: 2px 8px; border-radius: 12px; margin-right: 4px;">${isDone ? '完了' : 'PICK対象'}</span>` : ''}
+                        <span style="color: ${isPickingTarget ? (isDone ? '#eab308' : 'white') : '#f59e0b'}; font-size: 2rem; font-weight: 800; line-height: 1;">${unallocatedCount}</span>
+                        <span style="color: ${isPickingTarget ? (isDone ? '#ca8a04' : '#fefce8') : '#64748b'}; font-size: 0.8rem; font-weight: 800;">SKU</span>
                     </div>
                 </div>
             `;
@@ -504,21 +555,42 @@
 
             if (isPickingTarget) {
                 const pickData = state.activePick['UNALLOCATED'];
-                block.classList.add('picking');
                 block.style.flexDirection = 'column';
-                if (pickData.skus && pickData.skus.length > 1) {
-                    block.innerHTML = `
-                        <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">対象: ${pickData.skus.length} SKU</div>
-                        <div style="line-height: 1; font-weight: 900;">${pickData.totalQty || pickData.qty}</div>
-                    `;
+                if (pickData.pendingQty === 0) {
+                    block.classList.add('picking-done');
+                    if (pickData.skus && pickData.skus.length > 1) {
+                        block.innerHTML = `
+                            <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">完了済: ${pickData.skus.length} SKU</div>
+                            <div style="line-height: 1; font-weight: 900;">${pickData.totalQty}</div>
+                        `;
+                    } else {
+                        const targetJan = pickData.skus ? pickData.skus[0] : '----';
+                        block.innerHTML = `
+                            <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">...${targetJan.slice(-4)}</div>
+                            <div style="line-height: 1; font-weight: 900;">${pickData.totalQty}</div>
+                        `;
+                    }
+                    block.style.setProperty('--pick-color', '#eab308');
                 } else {
-                    const targetJan = pickData.skus ? pickData.skus[0] : '----';
-                    block.innerHTML = `
-                        <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">...${targetJan.slice(-4)}</div>
-                        <div style="line-height: 1; font-weight: 900;">${pickData.totalQty || pickData.qty}</div>
-                    `;
+                    block.classList.add('picking');
+                    if (pickData.skus && pickData.skus.length > 1) {
+                        block.innerHTML = `
+                            <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">対象: ${pickData.skus.length} SKU</div>
+                            <div style="line-height: 1; font-weight: 900;">${pickData.pendingQty}</div>
+                        `;
+                    } else {
+                        const targetJan = pickData.skus ? pickData.skus[0] : '----';
+                        block.innerHTML = `
+                            <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">...${targetJan.slice(-4)}</div>
+                            <div style="line-height: 1; font-weight: 900;">${pickData.pendingQty}</div>
+                        `;
+                    }
+                    block.style.setProperty('--pick-color', '#eab308');
+                    block.onclick = (e) => {
+                        e.stopPropagation();
+                        markSlotDone('UNALLOCATED', state, stateMgr);
+                    };
                 }
-                block.style.setProperty('--pick-color', '#eab308'); // Yellow indicator for others
             } else if (skuCount > 0) {
                 if (state.mode === 'PICK') block.classList.add('grayed-out');
                 else block.classList.add('filled');
@@ -615,10 +687,14 @@
 
                     const othersBtn = document.createElement('div');
                     othersBtn.className = 'selector-btn';
-                    if (isPickingTarget) {
-                        othersBtn.style.background = '#eab308';
-                        othersBtn.style.color = 'white';
-                        othersBtn.style.border = '2px solid #fef08a';
+                    const pickDataOthers = state.activePick?.['UNALLOCATED'];
+                    const isPickingTargetOthers = state.mode === 'PICK' && pickDataOthers;
+                    const othersDone = isPickingTargetOthers && pickDataOthers.pendingQty === 0;
+
+                    if (isPickingTargetOthers) {
+                        othersBtn.style.background = othersDone ? 'black' : '#eab308';
+                        othersBtn.style.color = othersDone ? '#eab308' : 'white';
+                        othersBtn.style.border = othersDone ? '2px solid #eab308' : '2px solid #fef08a';
                     }
                     othersBtn.style.gridColumn = '1 / -1';
                     othersBtn.style.display = 'flex';
@@ -628,13 +704,13 @@
                     othersBtn.style.padding = '1.5rem';
                     othersBtn.innerHTML = `
                         <div style="text-align: left; display:flex; flex-direction:column; align-items:flex-start;">
-                            <span style="color: ${isPickingTarget ? '#fefce8' : '#94a3b8'}; font-size: 0.8rem; font-weight: 800;">No.${nextBayNo}</span>
-                            <span style="color: white; font-size: 1.2rem; font-weight: 800;">その他（未割り当て）</span>
+                            <span style="color: ${isPickingTargetOthers ? (othersDone ? '#ca8a04' : '#fefce8') : '#94a3b8'}; font-size: 0.8rem; font-weight: 800;">No.${nextBayNo}</span>
+                            <span style="color: ${isPickingTargetOthers && othersDone ? '#eab308' : 'white'}; font-size: 1.2rem; font-weight: 800;">その他（未割り当て）</span>
                         </div>
                         <div style="display:flex; align-items:baseline; gap:0.5rem;">
-                            ${isPickingTarget ? `<span style="font-size: 0.9rem; font-weight: 800; background: white; color: #ca8a04; padding: 2px 6px; border-radius: 8px;">対象</span>` : ''}
-                            <span style="font-size: 1.8rem; font-weight: 900; color: ${isPickingTarget ? 'white' : '#f59e0b'};">${unallocatedCount}</span>
-                            <span style="color:${isPickingTarget ? '#fefce8' : '#94a3b8'}; font-size:0.8rem; font-weight:700;">SKU</span>
+                            ${isPickingTargetOthers ? `<span style="font-size: 0.9rem; font-weight: 800; background: ${othersDone ? 'transparent' : 'white'}; border: ${othersDone ? '2px solid #eab308' : 'none'}; color: ${othersDone ? '#eab308' : '#ca8a04'}; padding: 2px 6px; border-radius: 8px;">${othersDone ? '完了' : '対象'}</span>` : ''}
+                            <span style="font-size: 1.8rem; font-weight: 900; color: ${isPickingTargetOthers ? (othersDone ? '#eab308' : 'white') : '#f59e0b'};">${unallocatedCount}</span>
+                            <span style="color:${isPickingTargetOthers ? (othersDone ? '#ca8a04' : '#fefce8') : '#94a3b8'}; font-size:0.8rem; font-weight:700;">SKU</span>
                         </div>
                     `;
                     othersBtn.onclick = () => {
