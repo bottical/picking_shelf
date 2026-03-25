@@ -22,7 +22,10 @@
         const loadList = (id) => {
             if (!stateMgr.state.pickLists?.[id]) {
                 new Audio('audio/error.mp3').play().catch(e => console.log(e));
-                return alert("ピッキングNo.が見つかりません！");
+                listIdInput.value = '';
+                currentListTitle.innerHTML = `<span style="color: var(--danger);">エラー：見つかりません (${id})</span>`;
+                pickTable.innerHTML = `<tr><td colspan="5" style="padding:3rem; text-align:center; color:var(--danger); font-size:1.2rem; font-weight:bold;">入力されたピッキングNo.「${id}」が存在しません。</td></tr>`;
+                return;
             }
             currentListId = id;
             listIdInput.value = '';
