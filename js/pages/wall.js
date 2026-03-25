@@ -253,6 +253,7 @@
 
                 const allDone = lines.every(l => l.status === 'DONE');
                 if (allDone) {
+                    new Audio('complete.mp3').play().catch(e => console.log(e));
                     updates.activePick = {};
                 } else {
                     const newActivePick = {};
