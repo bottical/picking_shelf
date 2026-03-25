@@ -21,7 +21,7 @@
 
         const loadList = (id) => {
             if (!stateMgr.state.pickLists?.[id]) {
-                new Audio('error.mp3').play().catch(e => console.log(e));
+                new Audio('audio/error.mp3').play().catch(e => console.log(e));
                 return alert("ピッキングNo.が見つかりません！");
             }
             currentListId = id;
@@ -31,9 +31,9 @@
             
             const allCompleted = lines.length > 0 && lines.every(l => l.status === 'DONE');
             if (allCompleted) {
-                new Audio('error.mp3').play().catch(e => console.log(e));
+                new Audio('audio/error.mp3').play().catch(e => console.log(e));
             } else {
-                new Audio('start.mp3').play().catch(e => console.log(e));
+                new Audio('audio/start.mp3').play().catch(e => console.log(e));
             }
 
             const newActivePick = {};
@@ -144,7 +144,7 @@
             const allDone = lines.every(l => l.status === 'DONE');
 
             if (allDone) {
-                new Audio('complete.mp3').play().catch(e => console.log(e));
+                new Audio('audio/complete.mp3').play().catch(e => console.log(e));
                 updates.activePick = {};
             } else {
                 const newActivePick = {};
