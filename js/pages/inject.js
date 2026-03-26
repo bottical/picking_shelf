@@ -268,8 +268,26 @@
         const csvColJan = document.getElementById('csvColJan');
         const csvColQty = document.getElementById('csvColQty');
 
+        const getSavedCsvFormat = () => {
+            if (stateMgr.user && stateMgr.user.uid) {
+                const saved = localStorage.getItem(`csvFormat_${stateMgr.user.uid}`);
+                if (saved) {
+                    try { return JSON.parse(saved); } catch (e) {}
+                }
+            }
+            return stateMgr.state?.config?.csvFormat || { skipHeader: true, pickCol: 1, janCol: 2, qtyCol: 3 };
+        };
+
+        const saveCsvFormat = (format) => {
+            if (stateMgr.user && stateMgr.user.uid) {
+                localStorage.setItem(`csvFormat_${stateMgr.user.uid}`, JSON.stringify(format));
+            }
+            const currentConfig = stateMgr.state?.config || {};
+            stateMgr.update({ config: { ...currentConfig, csvFormat: format } });
+        };
+
         csvConfigBtn.addEventListener('click', () => {
-            const format = stateMgr.state?.config?.csvFormat || { skipHeader: true, pickCol: 1, janCol: 2, qtyCol: 3 };
+            const format = getSavedCsvFormat();
             csvSkipHeader.checked = format.skipHeader;
             csvColPick.value = format.pickCol;
             csvColJan.value = format.janCol;
@@ -288,8 +306,7 @@
                 janCol: parseInt(csvColJan.value, 10) || 2,
                 qtyCol: parseInt(csvColQty.value, 10) || 3
             };
-            const currentConfig = stateMgr.state?.config || {};
-            stateMgr.update({ config: { ...currentConfig, csvFormat: format } });
+            saveCsvFormat(format);
             csvConfigModal.classList.add('hidden');
             alert('CSVの列取り込み設定を更新しました。');
         });
@@ -298,7 +315,7 @@
             const file = document.getElementById('csvFile').files[0];
             if (!file) return alert("ファイルを選択してください");
 
-            const format = stateMgr.state?.config?.csvFormat || { skipHeader: true, pickCol: 1, janCol: 2, qtyCol: 3 };
+            const format = getSavedCsvFormat();
             const idxPick = format.pickCol - 1;
             const idxJan = format.janCol - 1;
             const idxQty = format.qtyCol - 1;
