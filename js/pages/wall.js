@@ -474,39 +474,37 @@
                     controls.style.display = 'flex';
                     controls.style.gap = '8px';
 
-                    if (isSingleView) {
-                        const minusBtn = document.createElement('button');
-                        minusBtn.className = 'btn-round';
-                        minusBtn.innerHTML = '－';
-                        minusBtn.style.fontSize = '14px';
-                        minusBtn.style.background = 'rgba(0, 0, 0, 0.6)';
-                        const isLastEmpty = !state.slots?.[`${b}-${splitCount}`];
-                        if (splitCount <= 1 || !isLastEmpty) {
-                            minusBtn.classList.add('disabled');
-                        } else {
-                            minusBtn.onclick = (e) => {
-                                e.stopPropagation();
-                                stateMgr.update({ [`splits.${b}`]: splitCount - 1 });
-                            };
-                        }
-                        controls.appendChild(minusBtn);
-
-                        const plusBtn = document.createElement('button');
-                        plusBtn.className = 'btn-round';
-                        plusBtn.innerHTML = '＋';
-                        plusBtn.style.fontSize = '14px';
-                        plusBtn.style.background = 'rgba(0, 0, 0, 0.6)';
-                        const maxSplit = 6;
-                        if (splitCount >= maxSplit) {
-                            plusBtn.classList.add('disabled');
-                        } else {
-                            plusBtn.onclick = (e) => {
-                                e.stopPropagation();
-                                stateMgr.update({ [`splits.${b}`]: splitCount + 1 });
-                            };
-                        }
-                        controls.appendChild(plusBtn);
+                    const minusBtn = document.createElement('button');
+                    minusBtn.className = 'btn-round';
+                    minusBtn.innerHTML = '－';
+                    minusBtn.style.fontSize = '14px';
+                    minusBtn.style.background = 'rgba(0, 0, 0, 0.6)';
+                    const isLastEmpty = !state.slots?.[`${b}-${splitCount}`];
+                    if (splitCount <= 1 || !isLastEmpty) {
+                        minusBtn.classList.add('disabled');
+                    } else {
+                        minusBtn.onclick = (e) => {
+                            e.stopPropagation();
+                            stateMgr.update({ [`splits.${b}`]: splitCount - 1 });
+                        };
                     }
+                    controls.appendChild(minusBtn);
+
+                    const plusBtn = document.createElement('button');
+                    plusBtn.className = 'btn-round';
+                    plusBtn.innerHTML = '＋';
+                    plusBtn.style.fontSize = '14px';
+                    plusBtn.style.background = 'rgba(0, 0, 0, 0.6)';
+                    const maxSplit = 6;
+                    if (splitCount >= maxSplit) {
+                        plusBtn.classList.add('disabled');
+                    } else {
+                        plusBtn.onclick = (e) => {
+                            e.stopPropagation();
+                            stateMgr.update({ [`splits.${b}`]: splitCount + 1 });
+                        };
+                    }
+                    controls.appendChild(plusBtn);
 
                     const editBtn = document.createElement('button');
                     editBtn.className = 'btn-round';
