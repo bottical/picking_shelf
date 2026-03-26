@@ -312,27 +312,32 @@
             }
         };
 
-        const getIndicatorOverlay = (state, slotKey) => {
+        const getIndicators = (state, slotKey) => {
             const config = state.config || {};
             const showOthers = config.showOthers !== false;
             const indicators = [];
 
             const userStates = state.userStates || {};
             Object.keys(userStates).forEach(uId => {
-                if (uId !== stateMgr.currentUserId && !showOthers) return;
+                const uIdx = uId.slice(-1);
+                const isMe = uId === stateMgr.currentUserId;
+                if (!isMe && !showOthers) return;
 
                 const uState = userStates[uId];
-                const uColorIdx = uId.slice(-1);
                 
+                // Picking Indicator
                 const pickData = uState.activePick?.[slotKey];
                 if (pickData && pickData.pendingQty > 0) {
-                    indicators.push({ type: 'PICK', uId, colorIdx: uColorIdx, qty: pickData.pendingQty, skus: pickData.skus });
+                    indicators.push({ type: 'PICK', uId, uIdx, colorIdx: uIdx, qty: pickData.pendingQty, isMe });
                 }
 
+                // Injection Indicator
                 const injectPending = uState.injectPending;
                 if (injectPending && injectPending.status === 'WAITING_SLOT') {
-                    // In current design, we don't know the exact slot target for injection until tapped.
-                    // But we could show which BAY is being targeted if we tracked it.
+                    // If we want to show which slot is being targeted for injection, 
+                    // we need to know if this slot was the one scanned/selected.
+                    // For now, if it's "WAITING_SLOT", we show it on all configured slots
+                    // OR if we implement a specific targetSlot field in injectPending.
                 }
             });
             return indicators;
@@ -362,7 +367,7 @@
                 const slotKey = `${b}-${s}`;
                 const slotData = state.slots?.[slotKey];
                 
-                const indicators = getIndicatorOverlay(state, slotKey);
+                const indicators = getIndicators(state, slotKey);
                 const myPickData = currentUserState.activePick?.[slotKey];
 
                 const block = document.createElement('div');
@@ -431,7 +436,9 @@
 
                 if (indicators.length > 0) {
                     block.style.flexDirection = 'column';
-                    if (myPickData && myPickData.pendingQty > 0) {
+                    
+                    const myInd = indicators.find(ind => ind.isMe);
+                    if (myInd && myInd.type === 'PICK') {
                         block.classList.add('picking');
                         block.classList.add(`pulse-user-${stateMgr.currentUserId.slice(-1)}`);
                         block.innerHTML = `
@@ -443,13 +450,28 @@
                             markSlotDone(slotKey, state, stateMgr);
                         };
                     } else {
+                        // Show multi-user indicators
+                        const indContainer = document.createElement('div');
+                        indContainer.className = 'indicator-container';
+                        indicators.forEach(ind => {
+                            const dot = document.createElement('div');
+                            dot.className = `user-dot user-dot-${ind.uIdx}`;
+                            dot.textContent = ind.uIdx;
+                            indContainer.appendChild(dot);
+                        });
+                        block.appendChild(indContainer);
+
                         const primaryInd = indicators[0];
                         block.classList.add(`pulse-user-${primaryInd.colorIdx}`);
+                        
+                        const infoDiv = document.createElement('div');
+                        infoDiv.style.marginTop = 'auto';
                         if (skus.length > 0) {
-                            block.textContent = skus.length === 1 ? "..." + skus[0].slice(-4) : `${skus.length} SKU`;
+                            infoDiv.textContent = skus.length === 1 ? "..." + skus[0].slice(-4) : `${skus.length} SKU`;
                         } else {
-                            block.textContent = s;
+                            infoDiv.textContent = s;
                         }
+                        block.appendChild(infoDiv);
                     }
                     block.style.setProperty('--pick-color', getPickColor(s));
                 } else if (myPickData && myPickData.pendingQty === 0) {
@@ -461,19 +483,13 @@
                     `;
                     block.style.setProperty('--pick-color', getPickColor(s));
                 } else if (skus.length > 0) {
-                    if (state.mode === 'PICK') {
-                        block.classList.add('grayed-out');
-                    } else {
-                        block.classList.add('filled');
-                        block.style.cursor = 'pointer';
-                        block.onclick = (e) => {
-                            e.stopPropagation();
-                            if (state.mode === 'INJECT') {
-                                if (isInjectPending) stateMgr.selectSlot(b, s);
-                                else showSlotSkusModal(b, s, skus, stateMgr);
-                            }
-                        };
-                    }
+                    block.classList.add('filled');
+                    block.style.cursor = 'pointer';
+                    block.onclick = (e) => {
+                        e.stopPropagation();
+                        if (isInjectPending) stateMgr.selectSlot(b, s);
+                        else showSlotSkusModal(b, s, skus, stateMgr);
+                    };
                     block.textContent = skus.length === 1 ? "..." + skus[0].slice(-4) : `${skus.length} SKU`;
                     block.style.setProperty('--pick-color', getPickColor(s));
                 } else if (isInjectReady) {
@@ -567,21 +583,28 @@
             });
             const unallocatedCount = Object.keys(injectList).filter(jan => !allocatedSkus.has(jan)).length;
             const nextBayNo = (state.config?.bays || 9) + 1;
-            const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
-            const pickData = currentUserState.activePick?.['UNALLOCATED'];
-            const isPickingTarget = state.mode === 'PICK' && pickData;
-            const isDone = isPickingTarget && pickData.pendingQty === 0;
+            
+            const indicators = getIndicators(state, 'UNALLOCATED');
+            const myPick = indicators.find(ind => ind.isMe);
+            const isAnyPick = indicators.length > 0;
+            const isDone = myPick && myPick.qty === 0;
+
+            const bgColor = myPick ? (isDone ? '#000000' : '#ca8a04') : (isAnyPick ? '#334155' : '#1e293b');
+            const borderColor = isAnyPick ? '#eab308' : '#334155';
 
             bay10Container.innerHTML = `
-                <div class="mobile-screen" style="flex-direction: row; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border: 1px solid ${isPickingTarget ? (isDone ? '#eab308' : '#eab308') : '#334155'}; border-radius: 6px; background: ${isPickingTarget ? (isDone ? '#000000' : '#ca8a04') : '#1e293b'}; color: ${isPickingTarget && isDone ? '#eab308' : 'white'};">
+                <div class="mobile-screen" style="flex-direction: row; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border: 1px solid ${borderColor}; border-radius: 6px; background: ${bgColor}; color: white; position: relative;">
                     <div style="display: flex; flex-direction: column;">
-                        <span style="color: ${isPickingTarget ? (isDone ? '#ca8a04' : '#fefce8') : '#94a3b8'}; font-size: 0.7rem; font-weight: 800;">No.${nextBayNo}</span>
+                        <span style="color: #94a3b8; font-size: 0.7rem; font-weight: 800;">No.${nextBayNo}</span>
                         <span style="font-size: 1.1rem; font-weight: 800;">その他（未割り当て）</span>
                     </div>
                     <div style="display: flex; align-items: baseline; gap: 6px;">
-                        ${isPickingTarget ? `<span style="font-size: 1rem; font-weight: 800; background: ${isDone ? 'transparent' : '#fef08a'}; border: ${isDone ? '2px solid #ca8a04' : 'none'}; color: ${isDone ? '#ca8a04' : '#854d0e'}; padding: 2px 8px; border-radius: 12px; margin-right: 4px;">${isDone ? '完了' : 'PICK対象'}</span>` : ''}
-                        <span style="color: ${isPickingTarget ? (isDone ? '#eab308' : 'white') : '#f59e0b'}; font-size: 2rem; font-weight: 800; line-height: 1;">${unallocatedCount}</span>
-                        <span style="color: ${isPickingTarget ? (isDone ? '#ca8a04' : '#fefce8') : '#64748b'}; font-size: 0.8rem; font-weight: 800;">SKU</span>
+                        ${myPick ? `<span style="font-size: 1rem; font-weight: 800; background: ${isDone ? 'transparent' : '#fef08a'}; border: ${isDone ? '2px solid #ca8a04' : 'none'}; color: ${isDone ? '#ca8a04' : '#854d0e'}; padding: 2px 8px; border-radius: 12px; margin-right: 4px;">${isDone ? '完了' : 'PICK対象'}</span>` : ''}
+                        <span style="color: ${isAnyPick ? 'white' : '#f59e0b'}; font-size: 2rem; font-weight: 800; line-height: 1;">${unallocatedCount}</span>
+                        <span style="color: #94a3b8; font-size: 0.8rem; font-weight: 800;">SKU</span>
+                    </div>
+                    <div class="indicator-container" style="top:2px; right:2px;">
+                        ${indicators.map(ind => `<div class="user-dot user-dot-${ind.uIdx}">${ind.uIdx}</div>`).join('')}
                     </div>
                 </div>
             `;
@@ -605,9 +628,9 @@
             const container = document.createElement('div');
             container.className = 'mobile-screen';
             const nextBayNo = (state.config?.bays || 9) + 1;
-            const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
-            const pickDataAtUnallocated = currentUserState.activePick?.['UNALLOCATED'];
-            const isPickingTarget = state.mode === 'PICK' && pickDataAtUnallocated;
+            const indicators = getIndicators(state, 'UNALLOCATED');
+            const myPick = indicators.find(ind => ind.isMe);
+            const isAnyPick = indicators.length > 0;
 
             container.innerHTML = `
                 <div class="screen-header">
@@ -622,47 +645,47 @@
             const block = document.createElement('div');
             block.className = 'block';
 
-            if (isPickingTarget) {
-                const pickData = pickDataAtUnallocated;
+            if (isAnyPick) {
                 block.style.flexDirection = 'column';
-                if (pickData.pendingQty === 0) {
-                    block.classList.add('picking-done');
-                    if (pickData.skus && pickData.skus.length >= 1) {
+                if (myPick) {
+                    if (myPick.qty === 0) {
+                        block.classList.add('picking-done');
                         block.innerHTML = `
-                            <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">完了済: ${pickData.skus.length} SKU</div>
-                            <div style="line-height: 1; font-weight: 900;">${pickData.totalQty}</div>
+                            <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">完了済</div>
+                            <div style="line-height: 1; font-weight: 900;">OK</div>
                         `;
+                        block.style.setProperty('--pick-color', '#eab308');
                     } else {
-                        const targetJan = pickData.skus ? pickData.skus[0] : '----';
+                        block.classList.add('picking');
                         block.innerHTML = `
-                            <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">...${targetJan.slice(-4)}</div>
-                            <div style="line-height: 1; font-weight: 900;">${pickData.totalQty}</div>
+                            <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">対象: ${myPick.qty} 個</div>
+                            <div style="line-height: 1; font-weight: 900;">SCAN / TAP</div>
                         `;
+                        block.style.setProperty('--pick-color', '#eab308');
+                        block.onclick = (e) => {
+                            e.stopPropagation();
+                            markSlotDone('UNALLOCATED', state, stateMgr);
+                        };
                     }
-                    block.style.setProperty('--pick-color', '#eab308');
                 } else {
-                    block.classList.add('picking');
-                    if (pickData.skus && pickData.skus.length >= 1) {
-                        block.innerHTML = `
-                            <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">対象: ${pickData.skus.length} SKU</div>
-                            <div style="line-height: 1; font-weight: 900;">${pickData.pendingQty}</div>
-                        `;
-                    } else {
-                        const targetJan = pickData.skus ? pickData.skus[0] : '----';
-                        block.innerHTML = `
-                            <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">...${targetJan.slice(-4)}</div>
-                            <div style="line-height: 1; font-weight: 900;">${pickData.pendingQty}</div>
-                        `;
-                    }
-                    block.style.setProperty('--pick-color', '#eab308');
-                    block.onclick = (e) => {
-                        e.stopPropagation();
-                        markSlotDone('UNALLOCATED', state, stateMgr);
-                    };
+                    const primaryInd = indicators[0];
+                    block.classList.add(`pulse-user-${primaryInd.colorIdx}`);
+                    block.innerHTML = `
+                        <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">他ユーザー作業中</div>
+                        <div style="line-height: 1; font-weight: 900;">${skuCount} SKU</div>
+                    `;
                 }
+                const indContainer = document.createElement('div');
+                indContainer.className = 'indicator-container';
+                indicators.forEach(ind => {
+                    const dot = document.createElement('div');
+                    dot.className = `user-dot user-dot-${ind.uIdx}`;
+                    dot.textContent = ind.uIdx;
+                    indContainer.appendChild(dot);
+                });
+                block.appendChild(indContainer);
             } else if (skuCount > 0) {
-                if (state.mode === 'PICK') block.classList.add('grayed-out');
-                else block.classList.add('filled');
+                block.classList.add('filled');
                 block.style.flexDirection = 'column';
                 block.innerHTML = `
                     <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">${skuCount} SKU</div>
@@ -678,8 +701,35 @@
             return container;
         };
 
+        const updateInstructionBanner = (state) => {
+            const banner = document.getElementById('instructionBanner');
+            if (!banner) return;
+
+            const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
+            const inject = currentUserState.injectPending;
+
+            if (inject && inject.status === 'WAITING_SLOT') {
+                const uIdx = stateMgr.currentUserId.slice(-1);
+                banner.className = `instruction-banner user-bg-${uIdx}`;
+                banner.innerHTML = `
+                    <div style="display:flex; justify-content:center; align-items:center; gap:1rem;">
+                        <span>📥 <b>User ${uIdx}</b>: 商品 <b>${inject.jan}</b> を投入する間口をタップしてください</span>
+                        <button id="bannerCancelBtn" style="background:rgba(0,0,0,0.3); border:1px solid white; color:white; padding:4px 8px; border-radius:4px; font-size:0.8rem;">キャンセル</button>
+                    </div>
+                `;
+                banner.classList.remove('hidden');
+                document.getElementById('bannerCancelBtn').onclick = () => {
+                    stateMgr.updateUserState(stateMgr.currentUserId, { injectPending: null });
+                };
+            } else {
+                banner.classList.add('hidden');
+                banner.innerHTML = '';
+            }
+        };
+
         const render = (state) => {
             if (!state) return;
+            updateInstructionBanner(state);
             const config = state.config || {};
 
             if (!config.bays) {
@@ -756,7 +806,48 @@
                 for (let b = 1; b <= config.bays; b++) {
                     const btn = document.createElement('div');
                     btn.className = 'selector-btn';
+                    btn.style.position = 'relative';
+
+                    // Check for any user indicators in any slot of this bay
+                    let bayPickFound = false;
+                    let bayDone = true;
+                    const bayIndicators = [];
+                    const splitCount = state.splits?.[b] || 1;
+                    const activePicks = [];
+                    for (let s = 1; s <= splitCount; s++) {
+                        const slotInds = getIndicators(state, `${b}-${s}`);
+                        slotInds.forEach(ind => {
+                            if (!bayIndicators.find(i => i.uIdx === ind.uIdx)) bayIndicators.push(ind);
+                            if (ind.type === 'PICK') {
+                                bayPickFound = true;
+                                if (ind.qty > 0) bayDone = false;
+                            }
+                        });
+                    }
+
+                    if (bayPickFound) {
+                        btn.style.background = bayDone ? 'black' : '#eab308';
+                        btn.style.color = bayDone ? '#eab308' : 'white';
+                        btn.style.border = bayDone ? '2px solid #eab308' : '2px solid #fef08a';
+                    }
+
                     btn.textContent = `No.${b}`;
+                    if (bayIndicators.length > 0) {
+                        const indContainer = document.createElement('div');
+                        indContainer.className = 'indicator-container';
+                        indContainer.style.top = '2px';
+                        indContainer.style.right = '2px';
+                        bayIndicators.forEach(ind => {
+                            const dot = document.createElement('div');
+                            dot.className = `user-dot user-dot-${ind.uIdx}`;
+                            dot.style.width = '8px';
+                            dot.style.height = '8px';
+                            dot.style.fontSize = '0'; // skip text inside dot for selector
+                            indContainer.appendChild(dot);
+                        });
+                        btn.appendChild(indContainer);
+                    }
+
                     btn.onclick = () => {
                         currentSingleBayId = b;
                         render(stateMgr.state);
@@ -773,15 +864,16 @@
                     skus.forEach(sku => allocatedSkus.add(sku));
                 });
                 const unallocatedCount = Object.keys(injectList).filter(jan => !allocatedSkus.has(jan)).length;
-                const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
-                const pickDataOthers = currentUserState.activePick?.['UNALLOCATED'];
-                const isPickingTargetOthers = state.mode === 'PICK' && pickDataOthers;
-                const othersDone = isPickingTargetOthers && pickDataOthers.pendingQty === 0;
+                
+                const othersIndicators = getIndicators(state, 'UNALLOCATED');
+                const othersPickFound = othersIndicators.some(ind => ind.type === 'PICK');
+                const othersDone = othersPickFound && othersIndicators.every(ind => ind.type !== 'PICK' || ind.qty === 0);
 
                 const othersBtn = document.createElement('div');
                 othersBtn.className = 'selector-btn';
+                othersBtn.style.position = 'relative';
 
-                if (isPickingTargetOthers) {
+                if (othersPickFound) {
                     othersBtn.style.background = othersDone ? 'black' : '#eab308';
                     othersBtn.style.color = othersDone ? '#eab308' : 'white';
                     othersBtn.style.border = othersDone ? '2px solid #eab308' : '2px solid #fef08a';
@@ -794,13 +886,16 @@
                 othersBtn.style.padding = '1.5rem';
                 othersBtn.innerHTML = `
                     <div style="text-align: left; display:flex; flex-direction:column; align-items:flex-start;">
-                        <span style="color: ${isPickingTargetOthers ? (othersDone ? '#ca8a04' : '#fefce8') : '#94a3b8'}; font-size: 0.8rem; font-weight: 800;">No.${nextBayNo}</span>
-                        <span style="color: ${isPickingTargetOthers && othersDone ? '#eab308' : 'white'}; font-size: 1.2rem; font-weight: 800;">その他（未割り当て）</span>
+                        <span style="color: ${othersPickFound ? (othersDone ? '#ca8a04' : '#fefce8') : '#94a3b8'}; font-size: 0.8rem; font-weight: 800;">No.${nextBayNo}</span>
+                        <span style="color: ${othersPickFound && othersDone ? '#eab308' : 'white'}; font-size: 1.2rem; font-weight: 800;">その他（未割り当て）</span>
                     </div>
                     <div style="display:flex; align-items:baseline; gap:0.5rem;">
-                        ${isPickingTargetOthers ? `<span style="font-size: 0.9rem; font-weight: 800; background: ${othersDone ? 'transparent' : 'white'}; border: ${othersDone ? '2px solid #eab308' : 'none'}; color: ${othersDone ? '#eab308' : '#ca8a04'}; padding: 2px 6px; border-radius: 8px;">${othersDone ? '完了' : '対象'}</span>` : ''}
-                        <span style="font-size: 1.8rem; font-weight: 900; color: ${isPickingTargetOthers ? (othersDone ? '#eab308' : 'white') : '#f59e0b'};">${unallocatedCount}</span>
-                        <span style="color:${isPickingTargetOthers ? (othersDone ? '#ca8a04' : '#fefce8') : '#94a3b8'}; font-size:0.8rem; font-weight:700;">SKU</span>
+                        ${othersPickFound ? `<span style="font-size: 0.9rem; font-weight: 800; background: ${othersDone ? 'transparent' : 'white'}; border: ${othersDone ? '2px solid #eab308' : 'none'}; color: ${othersDone ? '#eab308' : '#ca8a04'}; padding: 2px 6px; border-radius: 8px;">${othersDone ? '完了' : '対象'}</span>` : ''}
+                        <span style="font-size: 1.8rem; font-weight: 900; color: ${othersPickFound ? (othersDone ? '#eab308' : 'white') : '#f59e0b'};">${unallocatedCount}</span>
+                        <span style="color:${othersPickFound ? (othersDone ? '#ca8a04' : '#fefce8') : '#94a3b8'}; font-size:0.8rem; font-weight:700;">SKU</span>
+                    </div>
+                    <div class="indicator-container" style="top:4px; right:4px;">
+                        ${othersIndicators.map(ind => `<div class="user-dot user-dot-${ind.uIdx}">${ind.uIdx}</div>`).join('')}
                     </div>
                 `;
                 othersBtn.onclick = () => {
