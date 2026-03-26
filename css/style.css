@@ -236,22 +236,27 @@ input:focus {
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    border: 2px solid transparent;
+    border: 1px solid rgba(255,255,255,0.2);
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: 800;
     font-size: 0.8rem;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     color: white;
     padding: 0;
+    opacity: 0.6;
+    filter: grayscale(0.4);
 }
 
 .user-btn.active {
-    transform: scale(1.2);
-    border-color: white;
-    box-shadow: 0 0 10px rgba(0,0,0,0.3);
+    transform: scale(1.35);
+    opacity: 1;
+    filter: none;
+    border: 2px solid white;
+    box-shadow: 0 0 15px rgba(0,0,0,0.4), 0 0 0 3px var(--border);
+    z-index: 10;
 }
 
 .user-btn-1 { background: var(--user1); }

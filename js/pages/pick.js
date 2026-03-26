@@ -20,6 +20,14 @@
         );
 
         const updateUserSelectorUI = () => {
+            const label = document.getElementById('currentUserLabel');
+            if (label) {
+                const uIdx = stateMgr.currentUserId.slice(-1);
+                label.textContent = `User ${uIdx}`;
+                label.style.display = 'inline-block';
+                label.style.color = `var(--user${uIdx})`;
+                label.style.background = `rgba(255,255,255,0.1)`;
+            }
             document.querySelectorAll('.user-btn').forEach(btn => {
                 btn.classList.toggle('active', btn.getAttribute('data-user') === stateMgr.currentUserId);
             });
