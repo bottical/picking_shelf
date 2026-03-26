@@ -49,13 +49,12 @@
     <header>
         <div style="display:flex; align-items:center; gap:1rem;">
             <h2 style="margin:0;">📥 投入モード</h2>
-            <div class="user-selector" id="userSelector" style="margin-right:0.5rem;">
-                <button class="user-btn user-btn-1" data-user="user1">1</button>
-                <button class="user-btn user-btn-2" data-user="user2">2</button>
-                <button class="user-btn user-btn-3" data-user="user3">3</button>
-                <button class="user-btn user-btn-4" data-user="user4">4</button>
-            </div>
-            <span id="currentUserLabel" style="font-size:0.9rem; font-weight:800; color:var(--primary); background:rgba(37,99,235,0.1); padding:0.2rem 0.6rem; border-radius:4px; display:none;"></span>
+            <select id="userSelect" class="user-select" style="margin-right:0.5rem;">
+                <option value="user1">User 1</option>
+                <option value="user2">User 2</option>
+                <option value="user3">User 3</option>
+                <option value="user4">User 4</option>
+            </select>
             <span id="sessionDisplay"
                 style="font-size:0.8rem; background:#f1f5f9; padding:0.25rem 0.75rem; border-radius:99px; font-weight:600;"></span>
         </div>

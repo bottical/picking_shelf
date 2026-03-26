@@ -47,25 +47,22 @@
         );
 
         const updateUserSelectorUI = () => {
-            const label = document.getElementById('currentUserLabel');
-            if (label) {
+            const userSelect = document.getElementById('userSelect');
+            if (userSelect) {
+                userSelect.value = stateMgr.currentUserId;
                 const uIdx = stateMgr.currentUserId.slice(-1);
-                label.textContent = `User ${uIdx}`;
-                label.style.display = 'inline-block';
-                label.style.color = `var(--user${uIdx})`;
-                label.style.background = `rgba(255,255,255,0.1)`;
+                userSelect.style.borderColor = `var(--user${uIdx})`;
+                userSelect.style.color = `var(--user${uIdx})`;
+                userSelect.style.backgroundColor = `rgba(255, 255, 255, 0.05)`;
             }
-            document.querySelectorAll('.user-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.getAttribute('data-user') === stateMgr.currentUserId);
-            });
         };
 
-        document.querySelectorAll('.user-btn').forEach(btn => {
-            btn.onclick = () => {
-                const userId = btn.getAttribute('data-user');
-                stateMgr.setCurrentUser(userId);
-            };
-        });
+        const userSelect = document.getElementById('userSelect');
+        if (userSelect) {
+            userSelect.addEventListener('change', (e) => {
+                stateMgr.setCurrentUser(e.target.value);
+            });
+        }
 
         // --- Setup Logic ---
         settingViewMode.addEventListener('change', () => {

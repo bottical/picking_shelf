@@ -227,13 +227,12 @@
         <button id="backBtn" class="btn btn-outline hidden" style="padding:0.25rem 0.75rem; font-size:0.8rem; color:white; border-color:#334155; background:transparent;">＜ 戻る</button>
         <span id="wallTitle" style="font-size:1.2rem; color:white; font-weight:bold; flex:1; text-align:center;">間口選択</span>
         <div style="display:flex; gap:0.5rem; align-items:center;">
-            <div class="user-selector" id="userSelector" style="margin-right:1rem;">
-                <button class="user-btn user-btn-1" data-user="user1">1</button>
-                <button class="user-btn user-btn-2" data-user="user2">2</button>
-                <button class="user-btn user-btn-3" data-user="user3">3</button>
-                <button class="user-btn user-btn-4" data-user="user4">4</button>
-            </div>
-            <span id="currentUserLabel" style="font-size:0.9rem; font-weight:800; color:white; background:rgba(255,255,255,0.1); padding:0.2rem 0.6rem; border-radius:4px; display:none;"></span>
+            <select id="userSelect" class="user-select" style="margin-right:0.5rem;">
+                <option value="user1">User 1</option>
+                <option value="user2">User 2</option>
+                <option value="user3">User 3</option>
+                <option value="user4">User 4</option>
+            </select>
             <button id="openOthersBtn" class="btn btn-primary hidden" style="padding:0.25rem 0.75rem; font-size:0.8rem; font-weight:bold; background:var(--warning); color:#fff; border:none;">📦 その他</button>
             <button id="openSettingsBtn" class="btn btn-outline" style="padding:0.25rem 0.75rem; font-size:0.8rem; color:white; border-color:#334155; background:transparent;">⚙️ 設定</button>
         </div>
