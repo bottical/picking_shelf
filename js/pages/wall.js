@@ -655,14 +655,38 @@
             wallHeader.classList.remove('hidden');
             homeBtn.classList.add('hidden'); // hidden behind wall header to save space
 
-            if (config.viewMode === 'multi') {
+            if (currentSingleBayId !== null) {
+                // SHOW DETAIL
+                const isUnallocated = currentSingleBayId === 'unallocated';
+                const nextBayNo = config.bays + 1;
+                wallTitle.textContent = isUnallocated ? `No.${nextBayNo} その他` : `No.${currentSingleBayId} 詳細`;
+                
+                backBtn.classList.remove('hidden');
+                multiViewContainer.classList.add('hidden');
+                selectorViewContainer.classList.add('hidden');
+                singleViewContainer.classList.remove('hidden');
+                bay10Container.classList.add('hidden');
+
+                singleViewContainer.innerHTML = '';
+                if (isUnallocated) {
+                    singleViewContainer.appendChild(renderUnallocatedDetail(state));
+                } else {
+                    singleViewContainer.appendChild(renderBayContent(currentSingleBayId, state, true));
+                }
+            } else if (config.viewMode === 'multi') {
                 // Feature: MULTI VIEW
                 wallTitle.textContent = "全間口一覧";
                 backBtn.classList.add('hidden');
                 multiViewContainer.classList.remove('hidden');
                 selectorViewContainer.classList.add('hidden');
                 singleViewContainer.classList.add('hidden');
-                bay10Container.classList.add('hidden');
+                
+                // Show Unallocated bay at the bottom
+                renderBay10(state);
+                bay10Container.onclick = () => {
+                    currentSingleBayId = 'unallocated';
+                    render(stateMgr.state);
+                };
 
                 const r = config.multiRows || 3;
                 const c = config.multiCols || 3;
@@ -678,92 +702,70 @@
                 }
 
             } else {
-                // Feature: SINGLE VIEW (Selector or Detail)
+                // Feature: SINGLE VIEW (Selector)
+                wallTitle.textContent = "間口選択";
+                backBtn.classList.add('hidden');
                 multiViewContainer.classList.add('hidden');
+                selectorViewContainer.classList.remove('hidden');
+                singleViewContainer.classList.add('hidden');
+                bay10Container.classList.add('hidden');
                 
-                if (currentSingleBayId === null) {
-                    // SHOW SELECTOR
-                    wallTitle.textContent = "間口選択";
-                    backBtn.classList.add('hidden');
-                    selectorViewContainer.classList.remove('hidden');
-                    singleViewContainer.classList.add('hidden');
-                    bay10Container.classList.add('hidden');
-                    
-                    selectorViewContainer.innerHTML = '';
-                    for (let b = 1; b <= config.bays; b++) {
-                        const btn = document.createElement('div');
-                        btn.className = 'selector-btn';
-                        btn.textContent = `No.${b}`;
-                        btn.onclick = () => {
-                            currentSingleBayId = b;
-                            render(stateMgr.state);
-                        };
-                        selectorViewContainer.appendChild(btn);
-                    }
-                    
-                    const nextBayNo = config.bays + 1;
-                    const injectList = state.injectList || {};
-                    const slots = state.slots || {};
-                    const allocatedSkus = new Set();
-                    Object.values(slots).forEach(slot => {
-                        const skus = slot.skus || (slot.sku ? [slot.sku] : []);
-                        skus.forEach(sku => allocatedSkus.add(sku));
-                    });
-                    const unallocatedCount = Object.keys(injectList).filter(jan => !allocatedSkus.has(jan)).length;
-                    const isPickingTarget = state.mode === 'PICK' && state.activePick?.['UNALLOCATED'];
-
-                    const othersBtn = document.createElement('div');
-                    othersBtn.className = 'selector-btn';
-                    const pickDataOthers = state.activePick?.['UNALLOCATED'];
-                    const isPickingTargetOthers = state.mode === 'PICK' && pickDataOthers;
-                    const othersDone = isPickingTargetOthers && pickDataOthers.pendingQty === 0;
-
-                    if (isPickingTargetOthers) {
-                        othersBtn.style.background = othersDone ? 'black' : '#eab308';
-                        othersBtn.style.color = othersDone ? '#eab308' : 'white';
-                        othersBtn.style.border = othersDone ? '2px solid #eab308' : '2px solid #fef08a';
-                    }
-                    othersBtn.style.gridColumn = '1 / -1';
-                    othersBtn.style.display = 'flex';
-                    othersBtn.style.flexDirection = 'row';
-                    othersBtn.style.justifyContent = 'space-between';
-                    othersBtn.style.alignItems = 'center';
-                    othersBtn.style.padding = '1.5rem';
-                    othersBtn.innerHTML = `
-                        <div style="text-align: left; display:flex; flex-direction:column; align-items:flex-start;">
-                            <span style="color: ${isPickingTargetOthers ? (othersDone ? '#ca8a04' : '#fefce8') : '#94a3b8'}; font-size: 0.8rem; font-weight: 800;">No.${nextBayNo}</span>
-                            <span style="color: ${isPickingTargetOthers && othersDone ? '#eab308' : 'white'}; font-size: 1.2rem; font-weight: 800;">その他（未割り当て）</span>
-                        </div>
-                        <div style="display:flex; align-items:baseline; gap:0.5rem;">
-                            ${isPickingTargetOthers ? `<span style="font-size: 0.9rem; font-weight: 800; background: ${othersDone ? 'transparent' : 'white'}; border: ${othersDone ? '2px solid #eab308' : 'none'}; color: ${othersDone ? '#eab308' : '#ca8a04'}; padding: 2px 6px; border-radius: 8px;">${othersDone ? '完了' : '対象'}</span>` : ''}
-                            <span style="font-size: 1.8rem; font-weight: 900; color: ${isPickingTargetOthers ? (othersDone ? '#eab308' : 'white') : '#f59e0b'};">${unallocatedCount}</span>
-                            <span style="color:${isPickingTargetOthers ? (othersDone ? '#ca8a04' : '#fefce8') : '#94a3b8'}; font-size:0.8rem; font-weight:700;">SKU</span>
-                        </div>
-                    `;
-                    othersBtn.onclick = () => {
-                        currentSingleBayId = 'unallocated';
+                selectorViewContainer.innerHTML = '';
+                for (let b = 1; b <= config.bays; b++) {
+                    const btn = document.createElement('div');
+                    btn.className = 'selector-btn';
+                    btn.textContent = `No.${b}`;
+                    btn.onclick = () => {
+                        currentSingleBayId = b;
                         render(stateMgr.state);
                     };
-                    selectorViewContainer.appendChild(othersBtn);
-
-                } else {
-                    // SHOW DETAIL
-                    const isUnallocated = currentSingleBayId === 'unallocated';
-                    const nextBayNo = config.bays + 1;
-                    wallTitle.textContent = isUnallocated ? `No.${nextBayNo} その他` : `No.${currentSingleBayId} 詳細`;
-                    
-                    backBtn.classList.remove('hidden');
-                    selectorViewContainer.classList.add('hidden');
-                    singleViewContainer.classList.remove('hidden');
-                    bay10Container.classList.add('hidden');
-
-                    singleViewContainer.innerHTML = '';
-                    if (isUnallocated) {
-                        singleViewContainer.appendChild(renderUnallocatedDetail(state));
-                    } else {
-                        singleViewContainer.appendChild(renderBayContent(currentSingleBayId, state, true));
-                    }
+                    selectorViewContainer.appendChild(btn);
                 }
+                
+                const nextBayNo = config.bays + 1;
+                const injectList = state.injectList || {};
+                const slots = state.slots || {};
+                const allocatedSkus = new Set();
+                Object.values(slots).forEach(slot => {
+                    const skus = slot.skus || (slot.sku ? [slot.sku] : []);
+                    skus.forEach(sku => allocatedSkus.add(sku));
+                });
+                const unallocatedCount = Object.keys(injectList).filter(jan => !allocatedSkus.has(jan)).length;
+                const isPickingTarget = state.mode === 'PICK' && state.activePick?.['UNALLOCATED'];
+
+                const othersBtn = document.createElement('div');
+                othersBtn.className = 'selector-btn';
+                const pickDataOthers = state.activePick?.['UNALLOCATED'];
+                const isPickingTargetOthers = state.mode === 'PICK' && pickDataOthers;
+                const othersDone = isPickingTargetOthers && pickDataOthers.pendingQty === 0;
+
+                if (isPickingTargetOthers) {
+                    othersBtn.style.background = othersDone ? 'black' : '#eab308';
+                    othersBtn.style.color = othersDone ? '#eab308' : 'white';
+                    othersBtn.style.border = othersDone ? '2px solid #eab308' : '2px solid #fef08a';
+                }
+                othersBtn.style.gridColumn = '1 / -1';
+                othersBtn.style.display = 'flex';
+                othersBtn.style.flexDirection = 'row';
+                othersBtn.style.justifyContent = 'space-between';
+                othersBtn.style.alignItems = 'center';
+                othersBtn.style.padding = '1.5rem';
+                othersBtn.innerHTML = `
+                    <div style="text-align: left; display:flex; flex-direction:column; align-items:flex-start;">
+                        <span style="color: ${isPickingTargetOthers ? (othersDone ? '#ca8a04' : '#fefce8') : '#94a3b8'}; font-size: 0.8rem; font-weight: 800;">No.${nextBayNo}</span>
+                        <span style="color: ${isPickingTargetOthers && othersDone ? '#eab308' : 'white'}; font-size: 1.2rem; font-weight: 800;">その他（未割り当て）</span>
+                    </div>
+                    <div style="display:flex; align-items:baseline; gap:0.5rem;">
+                        ${isPickingTargetOthers ? `<span style="font-size: 0.9rem; font-weight: 800; background: ${othersDone ? 'transparent' : 'white'}; border: ${othersDone ? '2px solid #eab308' : 'none'}; color: ${othersDone ? '#eab308' : '#ca8a04'}; padding: 2px 6px; border-radius: 8px;">${othersDone ? '完了' : '対象'}</span>` : ''}
+                        <span style="font-size: 1.8rem; font-weight: 900; color: ${isPickingTargetOthers ? (othersDone ? '#eab308' : 'white') : '#f59e0b'};">${unallocatedCount}</span>
+                        <span style="color:${isPickingTargetOthers ? (othersDone ? '#ca8a04' : '#fefce8') : '#94a3b8'}; font-size:0.8rem; font-weight:700;">SKU</span>
+                    </div>
+                `;
+                othersBtn.onclick = () => {
+                    currentSingleBayId = 'unallocated';
+                    render(stateMgr.state);
+                };
+                selectorViewContainer.appendChild(othersBtn);
             }
         };
 
