@@ -5,6 +5,7 @@
         const wallTitle = document.getElementById('wallTitle');
         const backBtn = document.getElementById('backBtn');
         const openSettingsBtn = document.getElementById('openSettingsBtn');
+        const openOthersBtn = document.getElementById('openOthersBtn');
         const homeBtn = document.getElementById('homeBtn');
         
         const multiViewContainer = document.getElementById('multiViewContainer');
@@ -74,6 +75,12 @@
         const hideSetup = () => setupOverlay.classList.add('hidden');
 
         openSettingsBtn.addEventListener('click', () => showSetup(true));
+        if (openOthersBtn) {
+            openOthersBtn.addEventListener('click', () => {
+                currentSingleBayId = 'unallocated';
+                render(stateMgr.state);
+            });
+        }
         closeSettingsBtn.addEventListener('click', () => hideSetup());
 
         saveSettingsBtn.addEventListener('click', () => {
@@ -658,6 +665,10 @@
             if (currentSingleBayId !== null) {
                 // SHOW DETAIL
                 const isUnallocated = currentSingleBayId === 'unallocated';
+                if (openOthersBtn) {
+                    if (isUnallocated) openOthersBtn.classList.add('hidden');
+                    else openOthersBtn.classList.remove('hidden');
+                }
                 const nextBayNo = config.bays + 1;
                 wallTitle.textContent = isUnallocated ? `No.${nextBayNo} その他` : `No.${currentSingleBayId} 詳細`;
                 
@@ -674,19 +685,14 @@
                     singleViewContainer.appendChild(renderBayContent(currentSingleBayId, state, true));
                 }
             } else if (config.viewMode === 'multi') {
+                if (openOthersBtn) openOthersBtn.classList.remove('hidden');
                 // Feature: MULTI VIEW
                 wallTitle.textContent = "全間口一覧";
                 backBtn.classList.add('hidden');
                 multiViewContainer.classList.remove('hidden');
                 selectorViewContainer.classList.add('hidden');
                 singleViewContainer.classList.add('hidden');
-                
-                // Show Unallocated bay at the bottom
-                renderBay10(state);
-                bay10Container.onclick = () => {
-                    currentSingleBayId = 'unallocated';
-                    render(stateMgr.state);
-                };
+                bay10Container.classList.add('hidden');
 
                 const r = config.multiRows || 3;
                 const c = config.multiCols || 3;
@@ -702,6 +708,7 @@
                 }
 
             } else {
+                if (openOthersBtn) openOthersBtn.classList.add('hidden');
                 // Feature: SINGLE VIEW (Selector)
                 wallTitle.textContent = "間口選択";
                 backBtn.classList.add('hidden');
