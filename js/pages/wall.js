@@ -374,7 +374,7 @@
                     block.style.flexDirection = 'column';
                     if (pickData.pendingQty === 0) {
                         block.classList.add('picking-done');
-                        if (pickData.skus && pickData.skus.length > 1) {
+                        if (pickData.skus && pickData.skus.length >= 1) {
                             block.innerHTML = `
                                 <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">完了済: ${pickData.skus.length} SKU</div>
                                 <div style="line-height: 1; font-weight: 900;">${pickData.totalQty || pickData.qty}</div>
@@ -388,7 +388,7 @@
                         }
                     } else {
                         block.classList.add('picking');
-                        if (pickData.skus && pickData.skus.length > 1) {
+                        if (pickData.skus && pickData.skus.length >= 1) {
                             block.innerHTML = `
                                 <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">対象: ${pickData.skus.length} SKU</div>
                                 <div style="line-height: 1; font-weight: 900;">${pickData.pendingQty}</div>
@@ -585,7 +585,7 @@
                 block.style.flexDirection = 'column';
                 if (pickData.pendingQty === 0) {
                     block.classList.add('picking-done');
-                    if (pickData.skus && pickData.skus.length > 1) {
+                    if (pickData.skus && pickData.skus.length >= 1) {
                         block.innerHTML = `
                             <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">完了済: ${pickData.skus.length} SKU</div>
                             <div style="line-height: 1; font-weight: 900;">${pickData.totalQty}</div>
@@ -600,7 +600,7 @@
                     block.style.setProperty('--pick-color', '#eab308');
                 } else {
                     block.classList.add('picking');
-                    if (pickData.skus && pickData.skus.length > 1) {
+                    if (pickData.skus && pickData.skus.length >= 1) {
                         block.innerHTML = `
                             <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">対象: ${pickData.skus.length} SKU</div>
                             <div style="line-height: 1; font-weight: 900;">${pickData.pendingQty}</div>
