@@ -19,6 +19,12 @@
             }
         );
 
+        const updateUserSelectorUI = () => {
+            document.querySelectorAll('.user-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-user') === stateMgr.currentUserId);
+            });
+        };
+
         const loadList = (id) => {
             if (!stateMgr.state.pickLists?.[id]) {
                 new Audio('audio/error.mp3').play().catch(e => console.log(e));
@@ -27,7 +33,6 @@
                 pickTable.innerHTML = `<tr><td colspan="5" style="padding:3rem; text-align:center; color:var(--danger); font-size:1.2rem; font-weight:bold;">入力されたピッキングNo.「${id}」が存在しません。</td></tr>`;
                 return;
             }
-            currentListId = id;
             listIdInput.value = '';
 
             const lines = stateMgr.state.pickLists[id];
@@ -60,35 +65,28 @@
                 }
             });
 
-            stateMgr.update({
-                activePick: newActivePick,
-                currentPickingNo: id,
-                mode: 'PICK'
-            });
+            stateMgr.startPicking(id, newActivePick);
         };
 
         const render = (state) => {
-            // Auto-sync currentPickingNo from global state
-            if (state.currentPickingNo && state.currentPickingNo !== currentListId) {
-                currentListId = state.currentPickingNo;
-            } else if (!state.currentPickingNo) {
-                currentListId = null;
-                currentListTitle.textContent = `ピッキングNo.を入力してください`;
-            }
+            updateUserSelectorUI();
+            const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
+            const currentPickingNo = currentUserState.currentPickingNo;
 
             pickTable.innerHTML = '';
-            if (!currentListId || !state.pickLists?.[currentListId]) {
-                const msg = !currentListId ? "ピッキングNo.を入力してください" : "データが見つかりません";
+            if (!currentPickingNo || !state.pickLists?.[currentPickingNo]) {
+                const msg = !currentPickingNo ? "ピッキングNo.を入力してください" : "データが見つかりません";
                 pickTable.innerHTML = `<tr><td colspan="5" style="padding:3rem; text-align:center; color:var(--text-muted);">${msg}</td></tr>`;
+                currentListTitle.textContent = `ピッキングNo.を入力してください`;
                 return;
             }
 
-            const lines = state.pickLists[currentListId];
+            const lines = state.pickLists[currentPickingNo];
             const allCompleted = lines.length > 0 && lines.every(l => l.status === 'DONE');
             if (allCompleted) {
-                currentListTitle.innerHTML = `<span style="color: red;">完了済み：${currentListId}</span>`;
+                currentListTitle.innerHTML = `<span style="color: red;">完了済み：${currentPickingNo}</span>`;
             } else {
-                currentListTitle.textContent = `ピッキング中: ${currentListId}`;
+                currentListTitle.innerHTML = `<span class="user-text-${stateMgr.currentUserId.slice(-1)}">【ユーザー${stateMgr.currentUserId.slice(-1)}】</span> ピッキング中: ${currentPickingNo}`;
             }
             lines.forEach((line, idx) => {
                 const entry = Object.entries(state.slots || {}).find(([k, v]) => {
@@ -117,7 +115,7 @@
                     </td>
                     <td style="padding:1rem;">
                         ${line.status === 'PENDING'
-                        ? `<button class="btn btn-primary btn-sm complete-btn" data-index="${idx}">完了</button>`
+                        ? `<button class="btn btn-primary btn-sm complete-btn user-bg-${stateMgr.currentUserId.slice(-1)}" data-index="${idx}">完了</button>`
                         : '✅'}
                     </td>
                 `;
@@ -133,22 +131,25 @@
         };
 
         const completeLine = (index) => {
-            if (!currentListId) return;
-            const lines = [...stateMgr.state.pickLists[currentListId]];
+            const currentUserState = stateMgr.state.userStates?.[stateMgr.currentUserId];
+            const currentPickingNo = currentUserState?.currentPickingNo;
+            if (!currentPickingNo) return;
+            
+            const lines = [...stateMgr.state.pickLists[currentPickingNo]];
             const line = lines[index];
             if (line.status === 'DONE') return;
 
             line.status = 'DONE';
 
             const updates = {
-                [`pickLists.${currentListId}`]: lines
+                [`pickLists.${currentPickingNo}`]: lines
             };
 
             const allDone = lines.every(l => l.status === 'DONE');
 
             if (allDone) {
                 new Audio('audio/complete.mp3').play().catch(e => console.log(e));
-                updates.activePick = {};
+                updates[`userStates.${stateMgr.currentUserId}.activePick`] = {};
             } else {
                 const newActivePick = {};
                 lines.forEach(l => {
@@ -158,7 +159,7 @@
                     });
                     const slotKey = entry ? entry[0] : 'UNALLOCATED';
                     if (!newActivePick[slotKey]) {
-                        newActivePick[slotKey] = { totalQty: 0, pendingQty: 0, skus: [], pickNo: currentListId };
+                        newActivePick[slotKey] = { totalQty: 0, pendingQty: 0, skus: [], pickNo: currentPickingNo };
                     }
                     newActivePick[slotKey].totalQty += l.qty;
                     if (l.status !== 'DONE') {
@@ -168,7 +169,7 @@
                         newActivePick[slotKey].skus.push(l.jan);
                     }
                 });
-                updates.activePick = newActivePick;
+                updates[`userStates.${stateMgr.currentUserId}.activePick`] = newActivePick;
             }
 
             stateMgr.update(updates);
@@ -209,14 +210,23 @@
         document.getElementById('forcePickBtn').onclick = forcePickMode;
 
         document.getElementById('resetPickingBtn').onclick = () => {
-            if (!currentListId) return;
+            const currentUserState = stateMgr.state.userStates?.[stateMgr.currentUserId];
+            if (!currentUserState?.currentPickingNo) return;
+            
             stateMgr.update({
-                currentPickingNo: firebase.firestore.FieldValue.delete(),
-                activePick: {}, // Clear active targets on wall
+                [`userStates.${stateMgr.currentUserId}.currentPickingNo`]: null,
+                [`userStates.${stateMgr.currentUserId}.activePick`]: {},
                 mode: 'INJECT'
             });
             alert("ピッキング作業をリセットしました");
         };
+
+        document.querySelectorAll('.user-btn').forEach(btn => {
+            btn.onclick = () => {
+                const userId = btn.getAttribute('data-user');
+                stateMgr.setCurrentUser(userId);
+            };
+        });
 
         document.querySelectorAll('.nav-link').forEach(link => {
             link.addEventListener('click', () => {

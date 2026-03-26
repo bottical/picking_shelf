@@ -227,6 +227,12 @@
         <button id="backBtn" class="btn btn-outline hidden" style="padding:0.25rem 0.75rem; font-size:0.8rem; color:white; border-color:#334155; background:transparent;">＜ 戻る</button>
         <span id="wallTitle" style="font-size:1.2rem; color:white; font-weight:bold; flex:1; text-align:center;">間口選択</span>
         <div style="display:flex; gap:0.5rem; align-items:center;">
+            <div class="user-selector" id="userSelector" style="margin-right:1rem;">
+                <button class="user-btn user-btn-1" data-user="user1">1</button>
+                <button class="user-btn user-btn-2" data-user="user2">2</button>
+                <button class="user-btn user-btn-3" data-user="user3">3</button>
+                <button class="user-btn user-btn-4" data-user="user4">4</button>
+            </div>
             <button id="openOthersBtn" class="btn btn-primary hidden" style="padding:0.25rem 0.75rem; font-size:0.8rem; font-weight:bold; background:var(--warning); color:#fff; border:none;">📦 その他</button>
             <button id="openSettingsBtn" class="btn btn-outline" style="padding:0.25rem 0.75rem; font-size:0.8rem; color:white; border-color:#334155; background:transparent;">⚙️ 設定</button>
         </div>
@@ -276,6 +282,10 @@
                     </div>
                     <label style="font-size: 0.8rem; font-weight: bold; color: var(--text-muted); margin-top: 1rem; display:block;">表示スタート間口 (No.)</label>
                     <input type="number" id="settingMultiStartId" min="1" max="100" value="1" style="margin-top:0.25rem;">
+                    
+                    <label style="font-size: 0.8rem; font-weight: bold; color: var(--text-muted); margin-top: 1rem; display:flex; align-items:center; gap:0.5rem; cursor:pointer;">
+                        <input type="checkbox" id="settingShowOthers" checked style="width:auto;"> 他ユーザーの状況を表示する
+                    </label>
                 </div>
 
                 <button id="saveSettingsBtn" class="btn btn-primary" style="width:100%; margin-top:1rem;">保存して開始</button>

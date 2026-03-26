@@ -26,7 +26,16 @@ function StateManager(onStateChange, onUserChange) {
             this.state = null;
         }
     });
+
+    // Local state for the current session/user
+    this.currentUserId = localStorage.getItem('picking_shelf_user_id') || 'user1';
 }
+
+StateManager.prototype.setCurrentUser = function (userId) {
+    this.currentUserId = userId;
+    localStorage.setItem('picking_shelf_user_id', userId);
+    if (this.state && this.onStateChange) this.onStateChange(this.state);
+};
 
 StateManager.prototype.subscribeToState = function (uid) {
     if (this.unsubscribeState) this.unsubscribeState();
@@ -35,14 +44,44 @@ StateManager.prototype.subscribeToState = function (uid) {
 
     this.unsubscribeState = docRef.onSnapshot((doc) => {
         if (doc.exists) {
-            this.state = doc.data();
-            if (this.onStateChange) this.onStateChange(this.state);
+            const data = doc.data();
+            // Migrate old state if needed
+            if (!data.userStates) {
+                this.migrateToMultiUser(uid, data);
+            } else {
+                this.state = data;
+                if (this.onStateChange) this.onStateChange(this.state);
+            }
         } else {
             this.initializeNewSession(uid);
         }
     }, (error) => {
         console.error("Firestore Error:", error);
     });
+};
+
+StateManager.prototype.migrateToMultiUser = function (uid, oldData) {
+    const userStates = {
+        user1: {
+            activePick: oldData.activePick || {},
+            currentPickingNo: oldData.currentPickingNo || null,
+            injectPending: oldData.injectPending || null
+        },
+        user2: { activePick: {}, currentPickingNo: null, injectPending: null },
+        user3: { activePick: {}, currentPickingNo: null, injectPending: null },
+        user4: { activePick: {}, currentPickingNo: null, injectPending: null }
+    };
+    
+    const updates = {
+        userStates: userStates,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    // Clean up old root fields
+    updates.activePick = firebase.firestore.FieldValue.delete();
+    updates.currentPickingNo = firebase.firestore.FieldValue.delete();
+    updates.injectPending = firebase.firestore.FieldValue.delete();
+
+    return this.db.collection("users").doc(uid).collection("states").doc("current").update(updates);
 };
 
 StateManager.prototype.initializeNewSession = function (uid) {
@@ -59,10 +98,14 @@ StateManager.prototype.initializeNewSession = function (uid) {
         },
         slots: {},
         splits: {},
-        injectList: {}, // Change to object for JAN: Quantity mapping
+        injectList: {},
         pickLists: {},
-        activePick: {},
-        injectPending: null,
+        userStates: {
+            user1: { activePick: {}, currentPickingNo: null, injectPending: null },
+            user2: { activePick: {}, currentPickingNo: null, injectPending: null },
+            user3: { activePick: {}, currentPickingNo: null, injectPending: null },
+            user4: { activePick: {}, currentPickingNo: null, injectPending: null }
+        },
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     return this.db.collection("users").doc(uid).collection("states").doc("current").set(initialState);
@@ -73,6 +116,46 @@ StateManager.prototype.update = function (updates) {
     const docRef = this.db.collection("users").doc(this.user.uid).collection("states").doc("current");
     updates.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
     return docRef.update(updates);
+};
+
+StateManager.prototype.updateUserState = function (userId, userUpdates) {
+    const updates = {};
+    for (const [key, value] of Object.entries(userUpdates)) {
+        updates[`userStates.${userId}.${key}`] = value;
+    }
+    return this.update(updates);
+};
+
+// Start picking a list (implements precedence rule)
+StateManager.prototype.startPicking = function (listId, activePickData) {
+    if (!this.user || !this.state) return;
+
+    return this.db.runTransaction(async (transaction) => {
+        const docRef = this.db.collection("users").doc(this.user.uid).collection("states").doc("current");
+        const doc = await transaction.get(docRef);
+        if (!doc.exists) return;
+        const data = doc.data();
+        const userStates = data.userStates || {};
+        
+        const updates = {
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        // Precedence Rule: If anyone else is picking this list, remove it from them
+        Object.keys(userStates).forEach(uId => {
+            if (userStates[uId].currentPickingNo === listId) {
+                updates[`userStates.${uId}.currentPickingNo`] = null;
+                updates[`userStates.${uId}.activePick`] = {};
+            }
+        });
+
+        // Assign to current user
+        updates[`userStates.${this.currentUserId}.currentPickingNo`] = listId;
+        updates[`userStates.${this.currentUserId}.activePick`] = activePickData;
+        updates.mode = 'PICK';
+
+        transaction.update(docRef, updates);
+    });
 };
 
 StateManager.prototype.reset = function () {
@@ -94,19 +177,21 @@ StateManager.prototype.logout = function () {
 };
 
 StateManager.prototype.selectSlot = function (bayId, subId) {
-    if (!this.state?.injectPending || this.state.injectPending.status !== "WAITING_SLOT") return;
+    const currentUserState = this.state?.userStates?.[this.currentUserId];
+    if (!currentUserState?.injectPending || currentUserState.injectPending.status !== "WAITING_SLOT") return;
     if (!this.user) return;
 
     const slotKey = `${bayId}-${subId}`;
-    const pendingJan = this.state.injectPending.jan;
+    const pendingJan = currentUserState.injectPending.jan;
     const docRef = this.db.collection("users").doc(this.user.uid).collection("states").doc("current");
 
     return this.db.runTransaction(async (transaction) => {
         const doc = await transaction.get(docRef);
         if (!doc.exists) return;
         const data = doc.data();
+        const userState = data.userStates[this.currentUserId];
 
-        if (!data.injectPending || data.injectPending.jan !== pendingJan) return;
+        if (!userState?.injectPending || userState.injectPending.jan !== pendingJan) return;
 
         const slots = data.slots || {};
         const currentSlot = slots[slotKey] || {};
@@ -121,7 +206,7 @@ StateManager.prototype.selectSlot = function (bayId, subId) {
 
         transaction.update(docRef, {
             slots: slots,
-            injectPending: null,
+            [`userStates.${this.currentUserId}.injectPending`]: null,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
     });

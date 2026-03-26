@@ -37,11 +37,27 @@
         let currentSingleBayId = null; // null means show selector
 
         const stateMgr = new StateManager(
-            (state) => render(state),
+            (state) => {
+                render(state);
+                updateUserSelectorUI();
+            },
             (user) => {
                 if (!user) window.location.href = 'index.html';
             }
         );
+
+        const updateUserSelectorUI = () => {
+            document.querySelectorAll('.user-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-user') === stateMgr.currentUserId);
+            });
+        };
+
+        document.querySelectorAll('.user-btn').forEach(btn => {
+            btn.onclick = () => {
+                const userId = btn.getAttribute('data-user');
+                stateMgr.setCurrentUser(userId);
+            };
+        });
 
         // --- Setup Logic ---
         settingViewMode.addEventListener('change', () => {
@@ -69,6 +85,7 @@
             if (cfg.multiRows) settingMultiRows.value = cfg.multiRows;
             if (cfg.multiCols) settingMultiCols.value = cfg.multiCols;
             if (cfg.multiStartId) settingMultiStartId.value = cfg.multiStartId;
+            document.getElementById('settingShowOthers').checked = cfg.showOthers !== false;
             settingViewMode.dispatchEvent(new Event('change'));
         };
 
@@ -91,6 +108,7 @@
                 multiRows: parseInt(settingMultiRows.value) || 3,
                 multiCols: parseInt(settingMultiCols.value) || 3,
                 multiStartId: parseInt(settingMultiStartId.value) || 1,
+                showOthers: document.getElementById('settingShowOthers').checked,
                 maxSplit: 6
             };
             stateMgr.update({ config: newConfig });
@@ -233,7 +251,8 @@
         };
 
         const markSlotDone = (slotKey, state, stateMgr) => {
-            const listId = state.currentPickingNo;
+            const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
+            const listId = currentUserState.currentPickingNo;
             if (!listId) return;
             const lines = [...state.pickLists[listId]];
             let changed = false;
@@ -261,7 +280,7 @@
                 const allDone = lines.every(l => l.status === 'DONE');
                 if (allDone) {
                     new Audio('audio/complete.mp3').play().catch(e => console.log(e));
-                    updates.activePick = {};
+                    updates[`userStates.${stateMgr.currentUserId}.activePick`] = {};
                 } else {
                     const newActivePick = {};
                     lines.forEach(l => {
@@ -282,17 +301,45 @@
                             newActivePick[lSlotKey].skus.push(l.jan);
                         }
                     });
-                    updates.activePick = newActivePick;
+                    updates[`userStates.${stateMgr.currentUserId}.activePick`] = newActivePick;
                 }
                 stateMgr.update(updates);
             }
+        };
+
+        const getIndicatorOverlay = (state, slotKey) => {
+            const config = state.config || {};
+            const showOthers = config.showOthers !== false;
+            const indicators = [];
+
+            const userStates = state.userStates || {};
+            Object.keys(userStates).forEach(uId => {
+                if (uId !== stateMgr.currentUserId && !showOthers) return;
+
+                const uState = userStates[uId];
+                const uColorIdx = uId.slice(-1);
+                
+                const pickData = uState.activePick?.[slotKey];
+                if (pickData && pickData.pendingQty > 0) {
+                    indicators.push({ type: 'PICK', uId, colorIdx: uColorIdx, qty: pickData.pendingQty, skus: pickData.skus });
+                }
+
+                const injectPending = uState.injectPending;
+                if (injectPending && injectPending.status === 'WAITING_SLOT') {
+                    // In current design, we don't know the exact slot target for injection until tapped.
+                    // But we could show which BAY is being targeted if we tracked it.
+                }
+            });
+            return indicators;
         };
 
         const renderBayContent = (b, state, isSingleView = false) => {
             const isConfigured = state.splits?.[b] !== undefined;
             const splitCount = isConfigured ? state.splits[b] : 1;
             const orientation = state.config?.orientation || 'portrait';
-            const isInjectPending = state.mode === 'INJECT' && state.injectPending && state.injectPending.status === 'WAITING_SLOT';
+            
+            const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
+            const isInjectPending = state.mode === 'INJECT' && currentUserState.injectPending && currentUserState.injectPending.status === 'WAITING_SLOT';
 
             const screen = document.createElement('div');
             screen.className = 'mobile-screen';
@@ -309,12 +356,14 @@
             for (let s = 1; s <= splitCount; s++) {
                 const slotKey = `${b}-${s}`;
                 const slotData = state.slots?.[slotKey];
-                const pickData = state.activePick?.[slotKey];
+                
+                const indicators = getIndicatorOverlay(state, slotKey);
+                const myPickData = currentUserState.activePick?.[slotKey];
 
                 const block = document.createElement('div');
                 block.className = 'block';
 
-                // Detailed Grid Placement (Bottom-heavy numbers)
+                // Detailed Grid Placement
                 if (orientation === 'portrait') {
                     if (splitCount === 2) {
                         if (s === 2) { block.style.gridRow = '1'; block.style.gridColumn = '1'; }
@@ -329,8 +378,8 @@
                         if (s === 1) { block.style.gridRow = '2'; block.style.gridColumn = '1'; }
                         if (s === 2) { block.style.gridRow = '2'; block.style.gridColumn = '2'; }
                     } else if (splitCount === 5) {
-                        if (s === 5) { block.style.gridRow = '1'; block.style.gridColumn = '1 / span 2'; }
-                        if (s === 3) { block.style.gridRow = '2'; block.style.gridColumn = '1'; }
+                        if (s === 5) { block.style.gridRow = '1 / span 2'; block.style.gridColumn = '1'; }
+                        if (s === 3) { block.style.gridRow = '1'; block.style.gridColumn = '2'; }
                         if (s === 4) { block.style.gridRow = '2'; block.style.gridColumn = '2'; }
                         if (s === 1) { block.style.gridRow = '3'; block.style.gridColumn = '1'; }
                         if (s === 2) { block.style.gridRow = '3'; block.style.gridColumn = '2'; }
@@ -372,75 +421,55 @@
                     }
                 }
 
-                const isPickingTarget = state.mode === 'PICK' && pickData;
+                const skus = slotData ? (slotData.skus || (slotData.sku ? [slotData.sku] : [])) : [];
                 const isInjectReady = state.mode === 'INJECT' && isInjectPending && isConfigured;
 
-                const skus = slotData ? (slotData.skus || (slotData.sku ? [slotData.sku] : [])) : [];
-
-                if (isPickingTarget) {
+                if (indicators.length > 0) {
                     block.style.flexDirection = 'column';
-                    if (pickData.pendingQty === 0) {
-                        block.classList.add('picking-done');
-                        if (pickData.skus && pickData.skus.length >= 1) {
-                            block.innerHTML = `
-                                <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">完了済: ${pickData.skus.length} SKU</div>
-                                <div style="line-height: 1; font-weight: 900;">${pickData.totalQty || pickData.qty}</div>
-                            `;
-                        } else {
-                            const targetJan = pickData.skus ? pickData.skus[0] : (skus[0] || '----');
-                            block.innerHTML = `
-                                <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">...${targetJan.slice(-4)}</div>
-                                <div style="line-height: 1; font-weight: 900;">${pickData.totalQty || pickData.qty}</div>
-                            `;
-                        }
-                    } else {
+                    if (myPickData && myPickData.pendingQty > 0) {
                         block.classList.add('picking');
-                        if (pickData.skus && pickData.skus.length >= 1) {
-                            block.innerHTML = `
-                                <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">対象: ${pickData.skus.length} SKU</div>
-                                <div style="line-height: 1; font-weight: 900;">${pickData.pendingQty}</div>
-                            `;
-                        } else {
-                            const targetJan = pickData.skus ? pickData.skus[0] : (skus[0] || '----');
-                            block.innerHTML = `
-                                <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">...${targetJan.slice(-4)}</div>
-                                <div style="line-height: 1; font-weight: 900;">${pickData.pendingQty}</div>
-                            `;
-                        }
+                        block.classList.add(`pulse-user-${stateMgr.currentUserId.slice(-1)}`);
+                        block.innerHTML = `
+                            <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">対象: ${myPickData.skus.length} SKU</div>
+                            <div style="line-height: 1; font-weight: 900;">${myPickData.pendingQty}</div>
+                        `;
                         block.onclick = (e) => {
                             e.stopPropagation();
                             markSlotDone(slotKey, state, stateMgr);
                         };
+                    } else {
+                        const primaryInd = indicators[0];
+                        block.classList.add(`pulse-user-${primaryInd.colorIdx}`);
+                        if (skus.length > 0) {
+                            block.textContent = skus.length === 1 ? "..." + skus[0].slice(-4) : `${skus.length} SKU`;
+                        } else {
+                            block.textContent = s;
+                        }
                     }
+                    block.style.setProperty('--pick-color', getPickColor(s));
+                } else if (myPickData && myPickData.pendingQty === 0) {
+                    block.style.flexDirection = 'column';
+                    block.classList.add('picking-done');
+                    block.innerHTML = `
+                        <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">完了済: ${myPickData.skus.length} SKU</div>
+                        <div style="line-height: 1; font-weight: 900;">${myPickData.totalQty}</div>
+                    `;
                     block.style.setProperty('--pick-color', getPickColor(s));
                 } else if (skus.length > 0) {
                     if (state.mode === 'PICK') {
                         block.classList.add('grayed-out');
-                        if (skus.length === 1) {
-                            block.textContent = "..." + skus[0].slice(-4);
-                        } else {
-                            block.textContent = `${skus.length} SKU`;
-                        }
                     } else {
                         block.classList.add('filled');
-                        if (skus.length === 1) {
-                            block.textContent = "..." + skus[0].slice(-4);
-                        } else {
-                            block.textContent = `${skus.length} SKU`;
-                        }
-                        
                         block.style.cursor = 'pointer';
                         block.onclick = (e) => {
                             e.stopPropagation();
                             if (state.mode === 'INJECT') {
-                                if (isInjectPending) {
-                                    stateMgr.selectSlot(b, s);
-                                } else {
-                                    showSlotSkusModal(b, s, skus, stateMgr);
-                                }
+                                if (isInjectPending) stateMgr.selectSlot(b, s);
+                                else showSlotSkusModal(b, s, skus, stateMgr);
                             }
                         };
                     }
+                    block.textContent = skus.length === 1 ? "..." + skus[0].slice(-4) : `${skus.length} SKU`;
                     block.style.setProperty('--pick-color', getPickColor(s));
                 } else if (isInjectReady) {
                     block.classList.add('inject-ready');
@@ -533,7 +562,8 @@
             });
             const unallocatedCount = Object.keys(injectList).filter(jan => !allocatedSkus.has(jan)).length;
             const nextBayNo = (state.config?.bays || 9) + 1;
-            const pickData = state.activePick?.['UNALLOCATED'];
+            const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
+            const pickData = currentUserState.activePick?.['UNALLOCATED'];
             const isPickingTarget = state.mode === 'PICK' && pickData;
             const isDone = isPickingTarget && pickData.pendingQty === 0;
 
@@ -570,7 +600,9 @@
             const container = document.createElement('div');
             container.className = 'mobile-screen';
             const nextBayNo = (state.config?.bays || 9) + 1;
-            const isPickingTarget = state.mode === 'PICK' && state.activePick?.['UNALLOCATED'];
+            const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
+            const pickDataAtUnallocated = currentUserState.activePick?.['UNALLOCATED'];
+            const isPickingTarget = state.mode === 'PICK' && pickDataAtUnallocated;
 
             container.innerHTML = `
                 <div class="screen-header">
@@ -586,7 +618,7 @@
             block.className = 'block';
 
             if (isPickingTarget) {
-                const pickData = state.activePick['UNALLOCATED'];
+                const pickData = pickDataAtUnallocated;
                 block.style.flexDirection = 'column';
                 if (pickData.pendingQty === 0) {
                     block.classList.add('picking-done');
@@ -736,13 +768,13 @@
                     skus.forEach(sku => allocatedSkus.add(sku));
                 });
                 const unallocatedCount = Object.keys(injectList).filter(jan => !allocatedSkus.has(jan)).length;
-                const isPickingTarget = state.mode === 'PICK' && state.activePick?.['UNALLOCATED'];
+                const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
+                const pickDataOthers = currentUserState.activePick?.['UNALLOCATED'];
+                const isPickingTargetOthers = state.mode === 'PICK' && pickDataOthers;
+                const othersDone = isPickingTargetOthers && pickDataOthers.pendingQty === 0;
 
                 const othersBtn = document.createElement('div');
                 othersBtn.className = 'selector-btn';
-                const pickDataOthers = state.activePick?.['UNALLOCATED'];
-                const isPickingTargetOthers = state.mode === 'PICK' && pickDataOthers;
-                const othersDone = isPickingTargetOthers && pickDataOthers.pendingQty === 0;
 
                 if (isPickingTargetOthers) {
                     othersBtn.style.background = othersDone ? 'black' : '#eab308';

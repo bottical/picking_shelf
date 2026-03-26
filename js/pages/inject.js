@@ -13,6 +13,7 @@
             (state) => {
                 render(state);
                 updateUIState(state);
+                updateUserSelectorUI();
             },
             (user) => {
                 if (user) {
@@ -26,9 +27,22 @@
         const cancelInjectBtn = document.getElementById('cancelInjectBtn');
         if (cancelInjectBtn) {
             cancelInjectBtn.addEventListener('click', () => {
-                stateMgr.update({ injectPending: firebase.firestore.FieldValue.delete() });
+                stateMgr.updateUserState(stateMgr.currentUserId, { injectPending: null });
             });
         }
+
+        const updateUserSelectorUI = () => {
+            document.querySelectorAll('.user-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-user') === stateMgr.currentUserId);
+            });
+        };
+
+        document.querySelectorAll('.user-btn').forEach(btn => {
+            btn.onclick = () => {
+                const userId = btn.getAttribute('data-user');
+                stateMgr.setCurrentUser(userId);
+            };
+        });
 
         // Ensure we are in INJECT mode when this page is loaded
         stateMgr.update({ mode: 'INJECT' });
@@ -41,7 +55,8 @@
         };
 
         const updateUIState = (state) => {
-            const pending = state.injectPending;
+            const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
+            const pending = currentUserState.injectPending;
             const isWaiting = pending && pending.status === "WAITING_SLOT";
 
             if (isWaiting) {
@@ -56,6 +71,13 @@
                 // ダッシュボードへのデータ注入
                 document.getElementById('dashJan').textContent = pending.jan;
                 document.getElementById('dashQty').textContent = totalQty;
+                
+                // ユーザー表示の更新
+                const dashUser = document.getElementById('dashUser');
+                if (dashUser) {
+                    dashUser.textContent = `ユーザー${stateMgr.currentUserId.slice(-1)}`;
+                    dashUser.className = `user-text-${stateMgr.currentUserId.slice(-1)}`;
+                }
                 
                 // 既存のメッセージアラートは非表示にする
                 scanMsg.classList.add('hidden');
@@ -389,8 +411,8 @@
                     if (alreadyInSlot) {
                         showMessage(`⚠️ SKU ${jan} は既に枠に投入済みです`, 'error');
                     } else {
-                        // 状態更新のみ。showMessageを使用すると、ダッシュボード側のUI制御と競合して表示されてしまうため呼ばない。
-                        stateMgr.update({
+                        // 状態更新のみ。
+                        stateMgr.updateUserState(stateMgr.currentUserId, {
                             injectPending: { jan, status: "WAITING_SLOT", requestedAt: Date.now() }
                         });
                     }
