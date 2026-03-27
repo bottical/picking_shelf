@@ -500,8 +500,14 @@
             const isUserPickingAnywhere = Object.values(myActivePick).some(p => p.pendingQty > 0);
             const localPending = stateMgr.localUiState.injectPendingPreview;
             const firestorePending = currentUserState.injectPending;
-            const effectivePending = firestorePending || localPending;
-            const isInjectPending = state.mode === 'INJECT' && effectivePending?.status === 'WAITING_SLOT';
+            const isInjectWaitingUi = state.mode === 'INJECT' && (
+                firestorePending?.status === 'WAITING_SLOT' ||
+                localPending?.status === 'WAITING_SLOT'
+            );
+            const isInjectReady = state.mode === 'INJECT' &&
+                firestorePending?.status === 'WAITING_SLOT' &&
+                isConfigured;
+            const isInjectSyncing = isInjectWaitingUi && !isInjectReady;
 
             const screen = document.createElement('div');
             screen.className = 'mobile-screen';
@@ -539,8 +545,6 @@
                 if (placement?.column) block.style.gridColumn = placement.column;
 
                 const skus = slotData ? (slotData.skus || (slotData.sku ? [slotData.sku] : [])) : [];
-                const isInjectReady = state.mode === 'INJECT' && isInjectPending && isConfigured;
-
                 if (indicators.length > 0) {
                     const myInd = indicators.find(ind => ind.isMe);
                     if (myInd && myInd.type === 'PICK') {
@@ -588,7 +592,7 @@
                     block.style.cursor = 'pointer';
                     block.onclick = (e) => {
                         e.stopPropagation();
-                        if (isInjectPending) stateMgr.selectSlot(b, s);
+                        if (isInjectReady) stateMgr.selectSlot(b, s);
                         else showSlotSkusModal(b, s, skus, stateMgr);
                     };
                     if (skus.length === 1) {
@@ -608,6 +612,9 @@
                         e.stopPropagation();
                         stateMgr.selectSlot(b, s);
                     };
+                } else if (isInjectSyncing && isConfigured) {
+                    block.classList.add('grayed-out');
+                    block.textContent = '同期中';
                 } else {
                     block.textContent = s;
                 }
@@ -616,12 +623,12 @@
             screen.appendChild(body);
 
             // Controls (Inject Mode Setup)
-            if (state.mode === 'INJECT' && !isInjectPending) {
+            if (state.mode === 'INJECT' && !isInjectWaitingUi) {
                 if (!isConfigured) {
                     const setup = document.createElement('div');
                     setup.className = 'setup-needed';
                     setup.innerHTML = `
-                        <div style="font-weight:800; font-size:0.75rem; color:${isInjectPending ? '#f87171' : 'white'}; margin-bottom:8px;">未設定</div>
+                        <div style="font-weight:800; font-size:0.75rem; color:${isInjectWaitingUi ? '#f87171' : 'white'}; margin-bottom:8px;">未設定</div>
                         <button class="btn-setup">初期化</button>
                     `;
                     setup.querySelector('.btn-setup').onclick = () => stateMgr.update({ [`splits.${b}`]: 1 });
@@ -841,14 +848,18 @@
             if (!banner) return;
 
             const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
-            const inject = currentUserState.injectPending || stateMgr.localUiState.injectPendingPreview;
+            const firestorePending = currentUserState.injectPending;
+            const localPending = stateMgr.localUiState.injectPendingPreview;
+            const inject = firestorePending || localPending;
+            const isWaitingUi = inject && inject.status === 'WAITING_SLOT';
+            const isReady = firestorePending && firestorePending.status === 'WAITING_SLOT';
 
-            if (inject && inject.status === 'WAITING_SLOT') {
+            if (isWaitingUi) {
                 const uIdx = stateMgr.currentUserId.slice(-1);
                 banner.className = `instruction-banner user-bg-${uIdx}`;
                 banner.innerHTML = `
                     <div style="display:flex; justify-content:center; align-items:center; gap:1rem;">
-                        <span>📥 <b>User ${uIdx}</b>: 商品 <b>${inject.jan}</b> を投入する間口をタップしてください</span>
+                        <span>${isReady ? '📥' : '⏳'} <b>User ${uIdx}</b>: 商品 <b>${inject.jan}</b> ${isReady ? 'を投入する間口をタップしてください' : 'を同期中です。反映までお待ちください'}</span>
                         <button id="bannerCancelBtn" style="background:rgba(0,0,0,0.3); border:1px solid white; color:white; padding:4px 8px; border-radius:4px; font-size:0.8rem;">キャンセル</button>
                     </div>
                 `;

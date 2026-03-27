@@ -47,17 +47,33 @@ StateManager.prototype._notifyUiOnlyChange = function () {
 };
 
 StateManager.prototype.setLocalInjectPending = function (jan) {
-    this.localUiState.injectPendingPreview = jan ? {
-        jan,
-        status: 'WAITING_SLOT',
-        requestedAt: Date.now()
-    } : null;
+    if (!jan) {
+        this.localUiState.injectPendingPreview = null;
+    } else if (typeof jan === 'string') {
+        this.localUiState.injectPendingPreview = {
+            jan,
+            status: 'WAITING_SLOT',
+            requestedAt: Date.now(),
+            requestId: this.createInjectRequestId()
+        };
+    } else {
+        this.localUiState.injectPendingPreview = {
+            jan: jan.jan,
+            status: jan.status || 'WAITING_SLOT',
+            requestedAt: jan.requestedAt || Date.now(),
+            requestId: jan.requestId || this.createInjectRequestId()
+        };
+    }
     this._notifyUiOnlyChange();
 };
 
 StateManager.prototype.clearLocalInjectPending = function () {
     this.localUiState.injectPendingPreview = null;
     this._notifyUiOnlyChange();
+};
+
+StateManager.prototype.createInjectRequestId = function () {
+    return `inject-req-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 };
 
 StateManager.prototype.setOptimisticSlot = function (slotKey, jan) {
@@ -469,42 +485,69 @@ StateManager.prototype.selectSlot = function (bayId, subId) {
 
     const slotKey = `${bayId}-${subId}`;
     const pendingJan = pending.jan;
+    const pendingRequestId = pending.requestId || null;
     const docRef = this.db.collection("users").doc(this.user.uid).collection("states").doc("current");
 
     const opId = this.setOptimisticSlot(slotKey, pendingJan);
     this.clearLocalInjectPending();
 
-    return this.db.runTransaction(async (transaction) => {
-        const doc = await transaction.get(docRef);
-        if (!doc.exists) return;
-        const data = doc.data();
-        const userState = data.userStates[this.currentUserId];
+    const isUnsyncedPendingError = (error) => {
+        return error && error.message === 'injectPending is not synced to Firestore yet';
+    };
 
-        if (!userState?.injectPending || userState.injectPending.jan !== pendingJan) {
-            throw new Error('injectPending is not synced to Firestore yet');
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const attemptSelectSlot = async (retryCount) => {
+        try {
+            await this.db.runTransaction(async (transaction) => {
+                const doc = await transaction.get(docRef);
+                if (!doc.exists) return;
+                const data = doc.data();
+                const userState = data.userStates[this.currentUserId];
+                const remotePending = userState?.injectPending;
+
+                const isSameJan = remotePending?.jan === pendingJan;
+                const isSameRequestId = !pendingRequestId || remotePending?.requestId === pendingRequestId;
+                if (!remotePending || !isSameJan || !isSameRequestId) {
+                    throw new Error('injectPending is not synced to Firestore yet');
+                }
+
+                const slots = data.slots || {};
+                const currentSlot = slots[slotKey] || {};
+
+                let skus = currentSlot.skus || (currentSlot.sku ? [currentSlot.sku] : []);
+
+                if (!skus.includes(pendingJan)) {
+                    skus.push(pendingJan);
+                }
+
+                slots[slotKey] = { skus: skus };
+
+                transaction.update(docRef, {
+                    slots: slots,
+                    [`userStates.${this.currentUserId}.injectPending`]: null,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            });
+        } catch (error) {
+            if (isUnsyncedPendingError(error) && retryCount > 0) {
+                await sleep(200);
+                return attemptSelectSlot(retryCount - 1);
+            }
+            throw error;
         }
+    };
 
-        const slots = data.slots || {};
-        const currentSlot = slots[slotKey] || {};
-        
-        let skus = currentSlot.skus || (currentSlot.sku ? [currentSlot.sku] : []);
-        
-        if (!skus.includes(pendingJan)) {
-            skus.push(pendingJan);
-        }
-
-        slots[slotKey] = { skus: skus };
-
-        transaction.update(docRef, {
-            slots: slots,
-            [`userStates.${this.currentUserId}.injectPending`]: null,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-    }).then(() => {
+    return attemptSelectSlot(5).then(() => {
         this.markOptimisticSlotCommitted(slotKey, opId);
     }).catch((error) => {
         this.rollbackOptimisticInject(opId);
-        this.setLocalInjectPending(pendingJan);
+        this.setLocalInjectPending({
+            jan: pendingJan,
+            status: 'WAITING_SLOT',
+            requestedAt: pending.requestedAt,
+            requestId: pendingRequestId
+        });
         throw error;
     });
 };
