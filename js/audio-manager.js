@@ -13,7 +13,13 @@
     const playAudio = (audio, label) => {
         audio.currentTime = 0;
         audio.play().catch((err) => {
-            console.debug(`[audio] ${label} blocked`, err);
+            console.debug(`[audio] ${label} blocked on primary instance`, err);
+            const fallback = audio.cloneNode(true);
+            fallback.preload = 'auto';
+            fallback.currentTime = 0;
+            fallback.play().catch((fallbackErr) => {
+                console.debug(`[audio] ${label} blocked on fallback instance`, fallbackErr);
+            });
         });
     };
 

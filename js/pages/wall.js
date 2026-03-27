@@ -459,7 +459,7 @@
             const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
             const myActivePick = currentUserState.activePick || {};
             const isUserPickingAnywhere = Object.values(myActivePick).some(p => p.pendingQty > 0);
-            const isInjectPending = state.mode === 'INJECT' && currentUserState.injectPending && currentUserState.injectPending.status === 'WAITING_SLOT';
+            const isInjectPending = state.mode === 'INJECT' && currentUserState.injectPending?.status === 'WAITING_SLOT';
 
             const screen = document.createElement('div');
             screen.className = 'mobile-screen';
@@ -579,7 +579,7 @@
             screen.appendChild(body);
 
             // Controls (Inject Mode Setup)
-            if (state.mode === 'INJECT') {
+            if (state.mode === 'INJECT' && !isInjectPending) {
                 if (!isConfigured) {
                     const setup = document.createElement('div');
                     setup.className = 'setup-needed';
@@ -716,9 +716,15 @@
             const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
             const myActivePick = currentUserState.activePick || {};
             const isUserPickingAnywhere = Object.values(myActivePick).some(p => p.pendingQty > 0);
-            
-            const myPick = indicators.find(ind => ind.isMe);
-            const isTargetForMe = myPick && myPick.qty > 0;
+            const pickUnallocated = myActivePick['UNALLOCATED'];
+            const isPickContext = Boolean(pickUnallocated);
+            const hasPending = Boolean(isPickContext && pickUnallocated.pendingQty > 0);
+            const displaySkuCount = isPickContext ? (pickUnallocated.skus?.length || 0) : skuCount;
+            const displayQty = isPickContext
+                ? (hasPending ? pickUnallocated.pendingQty : pickUnallocated.totalQty)
+                : totalQty;
+            const myPickIndicator = indicators.find(ind => ind.isMe);
+            const isTargetForMe = hasPending || Boolean(myPickIndicator && myPickIndicator.qty > 0);
 
             const body = document.createElement('div');
             body.className = 'screen-body grid-split-1';
@@ -729,36 +735,44 @@
                 block.classList.add('grayed-out');
             }
 
-            if (isAnyPick) {
+            if (isPickContext) {
                 block.style.flexDirection = 'column';
-                if (myPick) {
-                    if (myPick.qty === 0) {
-                        block.classList.add('picking-done');
-                        block.innerHTML = `
-                            <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">完了済</div>
-                            <div style="line-height: 1; font-weight: 900;">OK</div>
-                        `;
-                        block.style.setProperty('--pick-color', '#eab308');
-                    } else {
-                        block.classList.add('picking');
-                        block.innerHTML = `
-                            <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">対象: ${myPick.qty} 個</div>
-                            <div style="line-height: 1; font-weight: 900;">SCAN / TAP</div>
-                        `;
-                        block.style.setProperty('--pick-color', '#eab308');
-                        block.onclick = (e) => {
-                            e.stopPropagation();
-                            markSlotDone('UNALLOCATED', state, stateMgr);
-                        };
-                    }
-                } else {
-                    const primaryInd = indicators[0];
-                    block.classList.add(`pulse-user-${primaryInd.colorIdx}`);
+                if (hasPending) {
+                    block.classList.add('picking');
                     block.innerHTML = `
-                        <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">他ユーザー作業中</div>
-                        <div style="line-height: 1; font-weight: 900;">${skuCount} SKU</div>
+                        <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">対象: ${displaySkuCount} SKU</div>
+                        <div style="line-height: 1; font-weight: 900;">${displayQty} 個</div>
                     `;
+                    block.style.setProperty('--pick-color', '#eab308');
+                    block.onclick = (e) => {
+                        e.stopPropagation();
+                        markSlotDone('UNALLOCATED', state, stateMgr);
+                    };
+                } else {
+                    block.classList.add('picking-done');
+                    block.innerHTML = `
+                        <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">完了済: ${displaySkuCount} SKU</div>
+                        <div style="line-height: 1; font-weight: 900;">${displayQty} 個</div>
+                    `;
+                    block.style.setProperty('--pick-color', '#eab308');
                 }
+                const indContainer = document.createElement('div');
+                indContainer.className = 'indicator-container';
+                indicators.forEach(ind => {
+                    const dot = document.createElement('div');
+                    dot.className = `user-dot user-dot-${ind.uIdx}`;
+                    dot.textContent = ind.uIdx;
+                    indContainer.appendChild(dot);
+                });
+                block.appendChild(indContainer);
+            } else if (isAnyPick) {
+                block.style.flexDirection = 'column';
+                const primaryInd = indicators[0];
+                block.classList.add(`pulse-user-${primaryInd.colorIdx}`);
+                block.innerHTML = `
+                    <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">他ユーザー作業中</div>
+                    <div style="line-height: 1; font-weight: 900;">${skuCount} SKU</div>
+                `;
                 const indContainer = document.createElement('div');
                 indContainer.className = 'indicator-container';
                 indicators.forEach(ind => {

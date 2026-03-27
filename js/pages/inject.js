@@ -440,7 +440,7 @@
                 const state = stateMgr.state;
                 const totalQty = state.injectList?.[jan];
 
-                if (totalQty === undefined) {
+                if (!jan || totalQty === undefined) {
                     AudioManager.playErrorSound();
                     showMessage(`❌ SKU ${jan} はリストにありません`, 'error');
                 } else {
@@ -454,6 +454,7 @@
                         AudioManager.playErrorSound();
                         showMessage(`⚠️ SKU ${jan} は既に枠に投入済みです`, 'error');
                     } else {
+                        AudioManager.playStartSound();
                         // 全ユーザーのピッキングをリセットしつつ、自身の投入待機状態をセット
                         stateMgr.cancelAllPicks({
                             [`userStates.${stateMgr.currentUserId}.injectPending`]: { 
