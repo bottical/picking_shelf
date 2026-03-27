@@ -22,6 +22,7 @@
         const settingMultiRows = document.getElementById('settingMultiRows');
         const settingMultiCols = document.getElementById('settingMultiCols');
         const settingMultiStartId = document.getElementById('settingMultiStartId');
+        const settingBulkSplit = document.getElementById('settingBulkSplit');
         const saveSettingsBtn = document.getElementById('saveSettingsBtn');
         const closeSettingsBtn = document.getElementById('closeSettingsBtn');
         const DEVICE_SETTINGS_KEY = 'picking_shelf_wall_device_settings_v1';
@@ -107,6 +108,7 @@
             if (cfg.multiCols) settingMultiCols.value = cfg.multiCols;
             const deviceSettings = getDeviceWallSettings();
             settingMultiStartId.value = deviceSettings.multiStartId || cfg.multiStartId || 1;
+            settingBulkSplit.value = '';
             document.getElementById('settingShowOthers').checked = cfg.showOthers !== false;
             settingViewMode.dispatchEvent(new Event('change'));
         };
@@ -122,22 +124,37 @@
         }
         closeSettingsBtn.addEventListener('click', () => hideSetup());
 
-        saveSettingsBtn.addEventListener('click', () => {
+        saveSettingsBtn.addEventListener('click', async () => {
             const newConfig = {
-                bays: parseInt(settingBays.value) || 9,
+                bays: parseInt(settingBays.value, 10) || 9,
                 viewMode: settingViewMode.value,
                 orientation: settingOrientation.value,
-                multiRows: parseInt(settingMultiRows.value) || 3,
-                multiCols: parseInt(settingMultiCols.value) || 3,
+                multiRows: parseInt(settingMultiRows.value, 10) || 3,
+                multiCols: parseInt(settingMultiCols.value, 10) || 3,
                 showOthers: document.getElementById('settingShowOthers').checked,
                 maxSplit: 6
             };
             const localMultiStartId = Math.max(1, parseInt(settingMultiStartId.value, 10) || 1);
             saveDeviceWallSettings({ multiStartId: localMultiStartId });
-            stateMgr.update({ config: newConfig });
-            hideSetup();
-            currentSingleBayId = null; // reset to selector if in single mode
-            render(stateMgr.state);
+
+            try {
+                await stateMgr.update({ config: newConfig });
+
+                const bulkSplit = parseInt(settingBulkSplit.value, 10);
+                if (bulkSplit >= 1 && bulkSplit <= 6) {
+                    const result = await stateMgr.applyBulkSplitCount(bulkSplit);
+                    if (result) {
+                        alert(`一括分割設定を適用しました（変更 ${result.changedBays} 間口 / 制約で据え置き ${result.constrainedBays} 間口）`);
+                    }
+                }
+
+                hideSetup();
+                currentSingleBayId = null; // reset to selector if in single mode
+                render(stateMgr.state);
+            } catch (error) {
+                console.error('設定の保存に失敗しました:', error);
+                alert('設定の保存に失敗しました。通信状態をご確認ください。');
+            }
         });
 
         // --- Edit Bay Logic ---

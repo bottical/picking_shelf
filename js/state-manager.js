@@ -133,6 +133,64 @@ StateManager.prototype.update = function (updates) {
     return docRef.update(updates);
 };
 
+StateManager.prototype._hasActiveSkuInSlot = function (slotData) {
+    return !!slotData && (
+        (Array.isArray(slotData.skus) && slotData.skus.length > 0) ||
+        !!slotData.sku
+    );
+};
+
+StateManager.prototype.applyBulkSplitCount = function (targetSplit) {
+    if (!this.user || !this.state) return Promise.reject("Not authenticated");
+
+    const normalizedTarget = Math.max(1, Math.min(6, parseInt(targetSplit, 10) || 1));
+
+    return this.db.runTransaction(async (transaction) => {
+        const docRef = this.db.collection("users").doc(this.user.uid).collection("states").doc("current");
+        const doc = await transaction.get(docRef);
+        if (!doc.exists) return { changedBays: 0, constrainedBays: 0, targetSplit: normalizedTarget };
+
+        const data = doc.data() || {};
+        const totalBays = parseInt(data.config?.bays, 10) || 0;
+        const splits = data.splits || {};
+        const slots = data.slots || {};
+        const updates = {
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        let changedBays = 0;
+        let constrainedBays = 0;
+
+        for (let bay = 1; bay <= totalBays; bay++) {
+            const originalSplit = parseInt(splits[bay], 10) || 1;
+            let nextSplit = originalSplit;
+
+            if (nextSplit < normalizedTarget) {
+                nextSplit = normalizedTarget;
+            } else if (nextSplit > normalizedTarget) {
+                let constrained = false;
+                while (nextSplit > normalizedTarget) {
+                    const lastSlotKey = `${bay}-${nextSplit}`;
+                    if (this._hasActiveSkuInSlot(slots[lastSlotKey])) {
+                        constrained = true;
+                        break;
+                    }
+                    nextSplit -= 1;
+                }
+                if (constrained) constrainedBays += 1;
+            }
+
+            if (originalSplit !== nextSplit) {
+                updates[`splits.${bay}`] = nextSplit;
+                changedBays += 1;
+            }
+        }
+
+        transaction.update(docRef, updates);
+        return { changedBays, constrainedBays, targetSplit: normalizedTarget };
+    });
+};
+
 StateManager.prototype._applyResetLogic = function (userId, data, updates) {
     const userState = data.userStates?.[userId];
     if (!userState) return;
