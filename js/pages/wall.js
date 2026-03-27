@@ -865,7 +865,10 @@
                 `;
                 banner.classList.remove('hidden');
                 document.getElementById('bannerCancelBtn').onclick = () => {
-                    stateMgr.updateUserState(stateMgr.currentUserId, { injectPending: null });
+                    stateMgr.update({
+                        [`userStates.${stateMgr.currentUserId}.injectPending`]: null
+                    });
+                    stateMgr.clearLocalInjectPending();
                 };
             } else {
                 banner.classList.add('hidden');

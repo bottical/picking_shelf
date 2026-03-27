@@ -27,7 +27,10 @@
         const cancelInjectBtn = document.getElementById('cancelInjectBtn');
         if (cancelInjectBtn) {
             cancelInjectBtn.addEventListener('click', () => {
-                stateMgr.updateUserState(stateMgr.currentUserId, { injectPending: null });
+                stateMgr.update({
+                    [`userStates.${stateMgr.currentUserId}.injectPending`]: null
+                });
+                stateMgr.clearLocalInjectPending();
             });
         }
 
