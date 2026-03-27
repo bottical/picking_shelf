@@ -488,16 +488,21 @@
                         AudioManager.playStartSound();
                         lastAcceptedJan = jan;
                         lastAcceptedAt = now;
-                        stateMgr.setLocalInjectPending(jan);
+                        const requestId = stateMgr.createInjectRequestId();
+                        const pending = {
+                            jan,
+                            status: "WAITING_SLOT",
+                            requestedAt: Date.now(),
+                            requestId
+                        };
+                        stateMgr.setLocalInjectPending(pending);
                         scanInput.disabled = true;
                         scanInput.parentElement.style.opacity = '0.5';
                         showMessage(`✅ SKU ${jan} を受け付けました。投入先の枠をタップしてください。`, 'info');
                         try {
                             await stateMgr.cancelAllPicks({
                                 [`userStates.${stateMgr.currentUserId}.injectPending`]: {
-                                    jan,
-                                    status: "WAITING_SLOT",
-                                    requestedAt: Date.now()
+                                    ...pending
                                 }
                             });
                         } catch (error) {
