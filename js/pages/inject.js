@@ -59,6 +59,7 @@
             return s;
         };
 
+        let lastIsWaiting = false;
         const updateUIState = (state) => {
             const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
             const pending = currentUserState.injectPending;
@@ -87,15 +88,21 @@
                 // 既存のメッセージアラートは非表示にする
                 scanMsg.classList.add('hidden');
             } else {
+                // 完了した瞬間を検知
+                if (lastIsWaiting) {
+                    new Audio('audio/start.mp3').play().catch(e => console.log(e));
+                    scanInput.value = '';
+                    setTimeout(() => scanInput.focus(), 100);
+                }
+                
                 instPanel.classList.add('hidden');
                 scanInput.disabled = false;
                 scanInput.parentElement.style.opacity = '1';
                 if (scanMsg.classList.contains('info')) {
                     scanMsg.classList.add('hidden');
-                    scanInput.value = '';
-                    scanInput.focus();
                 }
             }
+            lastIsWaiting = isWaiting;
         };
 
         const showSlotSkusModal = (b, s, skus, stateMgr) => {
