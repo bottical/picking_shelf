@@ -43,7 +43,9 @@
             const lines = stateMgr.state.pickLists[id];
             
             const allCompleted = lines.length > 0 && lines.every(l => l.status === 'DONE');
-            if (!allCompleted) {
+            if (allCompleted) {
+                AudioManager.playErrorSound();
+            } else {
                 AudioManager.playStartSound();
             }
 
