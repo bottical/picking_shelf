@@ -164,6 +164,28 @@ StateManager.prototype._reconcileLocalUiStateWithRemote = function (remoteState)
         }
     });
 
+    const localPending = this.localUiState.injectPendingPreview;
+    if (localPending) {
+        const remotePending = remoteState?.userStates?.[this.currentUserId]?.injectPending || null;
+        const localJan = localPending.jan;
+        const localRequestId = localPending.requestId || null;
+
+        const sameRemotePending =
+            remotePending &&
+            remotePending.jan === localJan &&
+            (!localRequestId || remotePending.requestId === localRequestId);
+
+        const janExistsSomewhere = Object.values(remoteSlots).some((slot) => {
+            const skus = slot?.skus || (slot?.sku ? [slot.sku] : []);
+            return skus.includes(localJan);
+        });
+
+        if (!sameRemotePending && janExistsSomewhere) {
+            this.localUiState.injectPendingPreview = null;
+            changed = true;
+        }
+    }
+
     if (changed) {
         this._notifyUiOnlyChange();
     }
