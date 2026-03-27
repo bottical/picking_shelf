@@ -22,6 +22,8 @@
         const settingMultiRows = document.getElementById('settingMultiRows');
         const settingMultiCols = document.getElementById('settingMultiCols');
         const settingMultiStartId = document.getElementById('settingMultiStartId');
+        const settingDisplayScale = document.getElementById('settingDisplayScale');
+        const settingDenseTextMode = document.getElementById('settingDenseTextMode');
         const settingBulkSplit = document.getElementById('settingBulkSplit');
         const saveSettingsBtn = document.getElementById('saveSettingsBtn');
         const closeSettingsBtn = document.getElementById('closeSettingsBtn');
@@ -108,6 +110,8 @@
             if (cfg.multiCols) settingMultiCols.value = cfg.multiCols;
             const deviceSettings = getDeviceWallSettings();
             settingMultiStartId.value = deviceSettings.multiStartId || cfg.multiStartId || 1;
+            settingDisplayScale.value = deviceSettings.displayScale || 'M';
+            settingDenseTextMode.checked = deviceSettings.denseTextMode !== false;
             settingBulkSplit.value = '';
             document.getElementById('settingShowOthers').checked = cfg.showOthers !== false;
             settingViewMode.dispatchEvent(new Event('change'));
@@ -135,7 +139,12 @@
                 maxSplit: 6
             };
             const localMultiStartId = Math.max(1, parseInt(settingMultiStartId.value, 10) || 1);
-            saveDeviceWallSettings({ multiStartId: localMultiStartId });
+            const localDisplayScale = ['S', 'M', 'L'].includes(settingDisplayScale.value) ? settingDisplayScale.value : 'M';
+            saveDeviceWallSettings({
+                multiStartId: localMultiStartId,
+                displayScale: localDisplayScale,
+                denseTextMode: !!settingDenseTextMode.checked
+            });
 
             try {
                 await stateMgr.update({ config: newConfig });
@@ -294,6 +303,34 @@
             return orientationLayouts[splitCount]?.[slotNo] || null;
         };
 
+        const getMergedSlots = (state) => {
+            const baseSlots = { ...(state.slots || {}) };
+            const optimisticSlots = stateMgr.localUiState.optimisticSlots || {};
+            Object.entries(optimisticSlots).forEach(([slotKey, optimisticSlot]) => {
+                if (!optimisticSlot) return;
+                baseSlots[slotKey] = { skus: [...(optimisticSlot.skus || [])] };
+            });
+            return baseSlots;
+        };
+
+        const getOptimisticMeta = (slotKey) => {
+            return stateMgr.localUiState.optimisticSlots?.[slotKey]?._meta || null;
+        };
+
+        const getDenseActive = (splitCount) => {
+            const deviceSettings = getDeviceWallSettings();
+            return deviceSettings.denseTextMode !== false && splitCount >= 5;
+        };
+
+        const renderStackedBlock = (blockEl, labelText, qtyText) => {
+            blockEl.innerHTML = `
+                <div class="block-content">
+                    <span class="block-main-label">${labelText || ''}</span>
+                    <span class="block-qty">${qtyText || ''}</span>
+                </div>
+            `;
+        };
+
         const showSlotSkusModal = (b, s, skus, stateMgr) => {
             let overlay = document.getElementById('slotSkusOverlay');
             if (overlay) overlay.remove();
@@ -368,12 +405,13 @@
             const listId = currentUserState.currentPickingNo;
             if (!listId) return;
             const lines = [...state.pickLists[listId]];
+            const mergedSlots = getMergedSlots(state);
             let changed = false;
 
             lines.forEach(l => {
                 if (l.status === 'DONE') return;
                 
-                const entry = Object.entries(state.slots || {}).find(([k, v]) => {
+                const entry = Object.entries(mergedSlots).find(([k, v]) => {
                     const skus = v.skus || (v.sku ? [v.sku] : []);
                     return skus.includes(l.jan);
                 });
@@ -397,7 +435,7 @@
                 } else {
                     const newActivePick = {};
                     lines.forEach(l => {
-                        const entry = Object.entries(state.slots || {}).find(([k, v]) => {
+                        const entry = Object.entries(mergedSlots).find(([k, v]) => {
                             const skus = v.skus || (v.sku ? [v.sku] : []);
                             return skus.includes(l.jan);
                         });
@@ -455,11 +493,15 @@
             const isConfigured = state.splits?.[b] !== undefined;
             const splitCount = isConfigured ? state.splits[b] : 1;
             const orientation = state.config?.orientation || 'portrait';
+            const denseEnabled = getDenseActive(splitCount);
             
             const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
             const myActivePick = currentUserState.activePick || {};
             const isUserPickingAnywhere = Object.values(myActivePick).some(p => p.pendingQty > 0);
-            const isInjectPending = state.mode === 'INJECT' && currentUserState.injectPending?.status === 'WAITING_SLOT';
+            const localPending = stateMgr.localUiState.injectPendingPreview;
+            const firestorePending = currentUserState.injectPending;
+            const effectivePending = firestorePending || localPending;
+            const isInjectPending = state.mode === 'INJECT' && effectivePending?.status === 'WAITING_SLOT';
 
             const screen = document.createElement('div');
             screen.className = 'mobile-screen';
@@ -472,10 +514,11 @@
 
             const body = document.createElement('div');
             body.className = `screen-body ${getGridClass(splitCount, orientation)}`;
+            const mergedSlots = getMergedSlots(state);
 
             for (let s = 1; s <= splitCount; s++) {
                 const slotKey = `${b}-${s}`;
-                const slotData = state.slots?.[slotKey];
+                const slotData = mergedSlots[slotKey];
                 
                 const indicators = getIndicators(state, slotKey);
                 const myPickData = myActivePick[slotKey];
@@ -483,6 +526,10 @@
 
                 const block = document.createElement('div');
                 block.className = 'block';
+                if (denseEnabled) block.classList.add('is-dense');
+                const optimisticMeta = getOptimisticMeta(slotKey);
+                if (optimisticMeta?.status === 'pending') block.classList.add('optimistic-pending');
+                if (optimisticMeta?.status === 'committed') block.classList.add('optimistic-committed');
                 if (isUserPickingAnywhere && !isTargetForMe) {
                     block.classList.add('grayed-out');
                 }
@@ -495,17 +542,12 @@
                 const isInjectReady = state.mode === 'INJECT' && isInjectPending && isConfigured;
 
                 if (indicators.length > 0) {
-                    block.style.flexDirection = 'column';
-                    
                     const myInd = indicators.find(ind => ind.isMe);
                     if (myInd && myInd.type === 'PICK') {
                         block.classList.add('picking');
                         block.classList.add(`pulse-user-${stateMgr.currentUserId.slice(-1)}`);
-                        const pickLabel = skus.length === 1 ? "..." + skus[0].slice(-4) : `対象: ${myPickData.skus.length} SKU`;
-                        block.innerHTML = `
-                            <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">${pickLabel}</div>
-                            <div style="line-height: 1; font-weight: 900;">${myPickData.pendingQty}</div>
-                        `;
+                        const pickLabel = skus.length === 1 ? "..." + skus[0].slice(-4) : (denseEnabled ? `${myPickData.skus.length} SKU` : `対象: ${myPickData.skus.length} SKU`);
+                        renderStackedBlock(block, pickLabel, `${myPickData.pendingQty}`);
                         block.onclick = (e) => {
                             e.stopPropagation();
                             markSlotDone(slotKey, state, stateMgr);
@@ -526,6 +568,7 @@
                         block.classList.add(`pulse-user-${primaryInd.colorIdx}`);
                         
                         const infoDiv = document.createElement('div');
+                        infoDiv.className = 'block-main-label';
                         infoDiv.style.marginTop = 'auto';
                         if (skus.length > 0) {
                             infoDiv.textContent = skus.length === 1 ? "..." + skus[0].slice(-4) : `${skus.length} SKU`;
@@ -536,13 +579,9 @@
                     }
                     block.style.setProperty('--pick-color', getPickColor(s));
                 } else if (myPickData && myPickData.pendingQty === 0) {
-                    block.style.flexDirection = 'column';
                     block.classList.add('picking-done');
-                    const doneLabel = skus.length === 1 ? "..." + skus[0].slice(-4) : `完了済: ${myPickData.skus.length} SKU`;
-                    block.innerHTML = `
-                        <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">${doneLabel}</div>
-                        <div style="line-height: 1; font-weight: 900;">${myPickData.totalQty}</div>
-                    `;
+                    const doneLabel = skus.length === 1 ? "..." + skus[0].slice(-4) : (denseEnabled ? `完了 ${myPickData.skus.length} SKU` : `完了済: ${myPickData.skus.length} SKU`);
+                    renderStackedBlock(block, doneLabel, `${myPickData.totalQty}`);
                     block.style.setProperty('--pick-color', getPickColor(s));
                 } else if (skus.length > 0) {
                     block.classList.add('filled');
@@ -554,11 +593,8 @@
                     };
                     if (skus.length === 1) {
                         const totalQty = state.injectList?.[skus[0]] || 0;
-                        block.style.flexDirection = 'column';
-                        block.innerHTML = `
-                            <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">...${skus[0].slice(-4)}</div>
-                            <div style="line-height: 1; font-weight: 900;">${totalQty}</div>
-                        `;
+                        const label = denseEnabled && splitCount >= 6 ? 'SKU' : `...${skus[0].slice(-4)}`;
+                        renderStackedBlock(block, label, `${totalQty}`);
                     } else {
                         block.textContent = `${skus.length} SKU`;
                     }
@@ -646,7 +682,7 @@
 
         const renderBay10 = (state) => {
             const injectList = state.injectList || {};
-            const slots = state.slots || {};
+            const slots = getMergedSlots(state);
             const allocatedSkus = new Set();
             Object.values(slots).forEach(slot => {
                 const skus = slot.skus || (slot.sku ? [slot.sku] : []);
@@ -690,7 +726,7 @@
 
         const renderUnallocatedDetail = (state) => {
             const injectList = state.injectList || {};
-            const slots = state.slots || {};
+            const slots = getMergedSlots(state);
             const allocatedSkus = new Set();
             Object.values(slots).forEach(slot => {
                 const skus = slot.skus || (slot.sku ? [slot.sku] : []);
@@ -804,7 +840,7 @@
             if (!banner) return;
 
             const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
-            const inject = currentUserState.injectPending;
+            const inject = currentUserState.injectPending || stateMgr.localUiState.injectPendingPreview;
 
             if (inject && inject.status === 'WAITING_SLOT') {
                 const uIdx = stateMgr.currentUserId.slice(-1);
@@ -829,6 +865,41 @@
             if (!state) return;
             updateInstructionBanner(state);
             const config = state.config || {};
+            const deviceSettings = getDeviceWallSettings();
+            const displayScale = ['S', 'M', 'L'].includes(deviceSettings.displayScale) ? deviceSettings.displayScale : 'M';
+            const denseTextMode = deviceSettings.denseTextMode !== false;
+            const getViewMaxSplit = () => {
+                if (currentSingleBayId !== null) {
+                    if (currentSingleBayId === 'unallocated') return 1;
+                    return parseInt(state.splits?.[currentSingleBayId], 10) || 1;
+                }
+                if (config.viewMode === 'multi') {
+                    const r = config.multiRows || 3;
+                    const c = config.multiCols || 3;
+                    const start = Math.max(1, parseInt(deviceSettings.multiStartId, 10) || 1);
+                    const totalBays = config.bays || 0;
+                    const maxStart = Math.max(1, totalBays - (r * c) + 1);
+                    const normalizedStart = Math.min(Math.max(1, start), maxStart);
+                    const end = Math.min(config.bays || 0, normalizedStart + (r * c) - 1);
+                    let maxSplit = 1;
+                    for (let bay = normalizedStart; bay <= end; bay++) {
+                        maxSplit = Math.max(maxSplit, parseInt(state.splits?.[bay], 10) || 1);
+                    }
+                    return maxSplit;
+                }
+                let maxSplit = 1;
+                for (let bay = 1; bay <= (config.bays || 0); bay++) {
+                    maxSplit = Math.max(maxSplit, parseInt(state.splits?.[bay], 10) || 1);
+                }
+                return maxSplit;
+            };
+            const rootEl = document.querySelector('.wall-root');
+            if (rootEl) {
+                rootEl.dataset.displayScale = displayScale;
+                const maxSplitInView = getViewMaxSplit();
+                rootEl.dataset.dense = denseTextMode && maxSplitInView >= 5 ? 'true' : 'false';
+            }
+            document.body.dataset.displayScale = displayScale;
 
             if (!config.bays) {
                 showSetup(false);
@@ -879,7 +950,6 @@
 
                 const r = config.multiRows || 3;
                 const c = config.multiCols || 3;
-                const deviceSettings = getDeviceWallSettings();
                 const start = Math.max(1, parseInt(deviceSettings.multiStartId, 10) || 1);
                 const totalBays = config.bays || 0;
                 const maxStart = Math.max(1, totalBays - (r * c) + 1);
@@ -959,7 +1029,7 @@
                 
                 const nextBayNo = config.bays + 1;
                 const injectList = state.injectList || {};
-                const slots = state.slots || {};
+                const slots = getMergedSlots(state);
                 const allocatedSkus = new Set();
                 Object.values(slots).forEach(slot => {
                     const skus = slot.skus || (slot.sku ? [slot.sku] : []);

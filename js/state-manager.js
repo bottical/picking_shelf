@@ -29,12 +29,128 @@ function StateManager(onStateChange, onUserChange) {
 
     // Local state for the current session/user
     this.currentUserId = localStorage.getItem('picking_shelf_user_id') || 'user1';
+    this.localUiState = {
+        injectPendingPreview: null,
+        optimisticSlots: {},
+        lastOpSeq: 0
+    };
 }
 
 StateManager.prototype.setCurrentUser = function (userId) {
     this.currentUserId = userId;
     localStorage.setItem('picking_shelf_user_id', userId);
     if (this.state && this.onStateChange) this.onStateChange(this.state);
+};
+
+StateManager.prototype._notifyUiOnlyChange = function () {
+    if (this.state && this.onStateChange) this.onStateChange(this.state);
+};
+
+StateManager.prototype.setLocalInjectPending = function (jan) {
+    this.localUiState.injectPendingPreview = jan ? {
+        jan,
+        status: 'WAITING_SLOT',
+        requestedAt: Date.now()
+    } : null;
+    this._notifyUiOnlyChange();
+};
+
+StateManager.prototype.clearLocalInjectPending = function () {
+    this.localUiState.injectPendingPreview = null;
+    this._notifyUiOnlyChange();
+};
+
+StateManager.prototype.setOptimisticSlot = function (slotKey, jan) {
+    if (!slotKey || !jan) return;
+    const opId = `inject-op-${Date.now()}-${++this.localUiState.lastOpSeq}`;
+    const currentSlots = this.state?.slots || {};
+    const previousSlotData = currentSlots[slotKey]
+        ? { skus: [...(currentSlots[slotKey].skus || (currentSlots[slotKey].sku ? [currentSlots[slotKey].sku] : []))] }
+        : null;
+
+    const nextSkus = previousSlotData ? [...previousSlotData.skus] : [];
+    if (!nextSkus.includes(jan)) {
+        nextSkus.push(jan);
+    }
+
+    this.localUiState.optimisticSlots[slotKey] = {
+        skus: nextSkus,
+        _meta: {
+            opId,
+            status: 'pending',
+            createdAt: Date.now(),
+            jan,
+            previousSlotData
+        }
+    };
+    this._notifyUiOnlyChange();
+    return opId;
+};
+
+StateManager.prototype.markOptimisticSlotCommitted = function (slotKey, opId) {
+    const slot = this.localUiState.optimisticSlots[slotKey];
+    if (!slot || !slot._meta) return;
+    if (opId && slot._meta.opId !== opId) return;
+    slot._meta.status = 'committed';
+    slot._meta.committedAt = Date.now();
+    this._notifyUiOnlyChange();
+};
+
+StateManager.prototype.clearOptimisticSlot = function (slotKey, opId) {
+    if (!slotKey) return;
+    const slot = this.localUiState.optimisticSlots[slotKey];
+    if (opId && slot?._meta?.opId !== opId) return;
+    delete this.localUiState.optimisticSlots[slotKey];
+    this._notifyUiOnlyChange();
+};
+
+StateManager.prototype.rollbackOptimisticInject = function (opId) {
+    this.localUiState.injectPendingPreview = null;
+    if (!opId) {
+        this.localUiState.optimisticSlots = {};
+    } else {
+        Object.keys(this.localUiState.optimisticSlots || {}).forEach((slotKey) => {
+            const slot = this.localUiState.optimisticSlots[slotKey];
+            if (slot?._meta?.opId === opId) {
+                delete this.localUiState.optimisticSlots[slotKey];
+            }
+        });
+    }
+    this._notifyUiOnlyChange();
+};
+
+StateManager.prototype._reconcileLocalUiStateWithRemote = function (remoteState) {
+    const remoteSlots = remoteState?.slots || {};
+    const optimisticSlots = this.localUiState.optimisticSlots || {};
+    const remoteUserPending = remoteState?.userStates?.[this.currentUserId]?.injectPending;
+    let changed = false;
+
+    Object.keys(optimisticSlots).forEach((slotKey) => {
+        const slot = optimisticSlots[slotKey];
+        const jan = slot?._meta?.jan;
+        if (!jan) return;
+        const status = slot?._meta?.status || 'pending';
+
+        const remoteSkus = remoteSlots[slotKey]?.skus || (remoteSlots[slotKey]?.sku ? [remoteSlots[slotKey].sku] : []);
+        const hasRemoteCommit = remoteSkus.includes(jan);
+        const isPendingClearedForThisJan = !remoteUserPending || remoteUserPending.jan !== jan;
+        const remoteConfirmed = hasRemoteCommit && isPendingClearedForThisJan;
+
+        const committedAt = slot?._meta?.committedAt || 0;
+        const createdAt = slot?._meta?.createdAt || 0;
+        const now = Date.now();
+        const committedTtlExpired = status === 'committed' && committedAt > 0 && (now - committedAt > 12000);
+        const pendingTtlExpired = status === 'pending' && createdAt > 0 && (now - createdAt > 25000);
+
+        if (remoteConfirmed || committedTtlExpired || pendingTtlExpired) {
+            delete optimisticSlots[slotKey];
+            changed = true;
+        }
+    });
+
+    if (changed) {
+        this._notifyUiOnlyChange();
+    }
 };
 
 StateManager.prototype.subscribeToState = function (uid) {
@@ -50,6 +166,7 @@ StateManager.prototype.subscribeToState = function (uid) {
                 this.migrateToMultiUser(uid, data);
             } else {
                 this.state = data;
+                this._reconcileLocalUiStateWithRemote(data);
                 if (this.onStateChange) this.onStateChange(this.state);
             }
         } else {
@@ -344,12 +461,18 @@ StateManager.prototype.logout = function () {
 
 StateManager.prototype.selectSlot = function (bayId, subId) {
     const currentUserState = this.state?.userStates?.[this.currentUserId];
-    if (!currentUserState?.injectPending || currentUserState.injectPending.status !== "WAITING_SLOT") return;
+    const pendingFromFirestore = currentUserState?.injectPending;
+    const pendingFromLocal = this.localUiState.injectPendingPreview;
+    const pending = pendingFromFirestore || pendingFromLocal;
+    if (!pending || pending.status !== "WAITING_SLOT") return;
     if (!this.user) return;
 
     const slotKey = `${bayId}-${subId}`;
-    const pendingJan = currentUserState.injectPending.jan;
+    const pendingJan = pending.jan;
     const docRef = this.db.collection("users").doc(this.user.uid).collection("states").doc("current");
+
+    const opId = this.setOptimisticSlot(slotKey, pendingJan);
+    this.clearLocalInjectPending();
 
     return this.db.runTransaction(async (transaction) => {
         const doc = await transaction.get(docRef);
@@ -375,6 +498,12 @@ StateManager.prototype.selectSlot = function (bayId, subId) {
             [`userStates.${this.currentUserId}.injectPending`]: null,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
+    }).then(() => {
+        this.markOptimisticSlotCommitted(slotKey, opId);
+    }).catch((error) => {
+        this.rollbackOptimisticInject(opId);
+        this.setLocalInjectPending(pendingJan);
+        throw error;
     });
 };
 
