@@ -58,6 +58,8 @@
             s = s.replace(/[０-９]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
             return s;
         };
+        let lastAcceptedJan = null;
+        let lastAcceptedAt = 0;
 
         function parseCsvLine(line) {
             const result = [];
@@ -88,9 +90,13 @@
         }
 
         let lastIsWaiting = false;
-        const updateUIState = (state) => {
+        const getEffectiveInjectPending = (state) => {
             const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
-            const pending = currentUserState.injectPending;
+            return currentUserState.injectPending || stateMgr.localUiState.injectPendingPreview;
+        };
+
+        const updateUIState = (state) => {
+            const pending = getEffectiveInjectPending(state);
             const isWaiting = pending && pending.status === "WAITING_SLOT";
 
             if (isWaiting) {
@@ -131,6 +137,17 @@
                 }
             }
             lastIsWaiting = isWaiting;
+        };
+
+        const buildJanToSlotMap = (slots) => {
+            const janToSlot = {};
+            Object.entries(slots || {}).forEach(([slotKey, slot]) => {
+                const skus = slot.skus || (slot.sku ? [slot.sku] : []);
+                skus.forEach((jan) => {
+                    janToSlot[jan] = slotKey;
+                });
+            });
+            return janToSlot;
         };
 
         const showSlotSkusModal = (b, s, skus, stateMgr) => {
@@ -434,8 +451,9 @@
             reader.readAsText(file);
         });
 
-        scanInput.addEventListener('keypress', (e) => {
+        scanInput.addEventListener('keypress', async (e) => {
             if (e.key === 'Enter') {
+                if (scanInput.disabled) return;
                 const jan = normalizeJan(scanInput.value);
                 const state = stateMgr.state;
                 const totalQty = state.injectList?.[jan];
@@ -444,25 +462,41 @@
                     AudioManager.playErrorSound();
                     showMessage(`❌ SKU ${jan} はリストにありません`, 'error');
                 } else {
-                    let alreadyInSlot = false;
-                    Object.values(state.slots || {}).forEach(slot => {
-                        const skus = slot.skus || (slot.sku ? [slot.sku] : []);
-                        if (skus.includes(jan)) alreadyInSlot = true;
-                    });
+                    const janToSlot = buildJanToSlotMap(state.slots || {});
+                    const alreadyInSlot = !!janToSlot[jan];
 
                     if (alreadyInSlot) {
                         AudioManager.playErrorSound();
                         showMessage(`⚠️ SKU ${jan} は既に枠に投入済みです`, 'error');
                     } else {
+                        const now = Date.now();
+                        if (lastAcceptedJan === jan && (now - lastAcceptedAt) < 500) {
+                            scanInput.value = '';
+                            return;
+                        }
                         AudioManager.playStartSound();
-                        // 全ユーザーのピッキングをリセットしつつ、自身の投入待機状態をセット
-                        stateMgr.cancelAllPicks({
-                            [`userStates.${stateMgr.currentUserId}.injectPending`]: { 
-                                jan, 
-                                status: "WAITING_SLOT", 
-                                requestedAt: Date.now() 
-                            }
-                        });
+                        lastAcceptedJan = jan;
+                        lastAcceptedAt = now;
+                        stateMgr.setLocalInjectPending(jan);
+                        scanInput.disabled = true;
+                        scanInput.parentElement.style.opacity = '0.5';
+                        showMessage(`✅ SKU ${jan} を受け付けました。投入先の枠をタップしてください。`, 'info');
+                        try {
+                            await stateMgr.cancelAllPicks({
+                                [`userStates.${stateMgr.currentUserId}.injectPending`]: {
+                                    jan,
+                                    status: "WAITING_SLOT",
+                                    requestedAt: Date.now()
+                                }
+                            });
+                        } catch (error) {
+                            console.error('injectPending の保存に失敗しました:', error);
+                            stateMgr.rollbackOptimisticInject();
+                            scanInput.disabled = false;
+                            scanInput.parentElement.style.opacity = '1';
+                            AudioManager.playErrorSound();
+                            showMessage('❌ 通信エラーにより投入待機を保存できませんでした。再度スキャンしてください。', 'error');
+                        }
                     }
                 }
                 scanInput.value = '';
