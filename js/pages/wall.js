@@ -441,8 +441,9 @@
                     if (myInd && myInd.type === 'PICK') {
                         block.classList.add('picking');
                         block.classList.add(`pulse-user-${stateMgr.currentUserId.slice(-1)}`);
+                        const pickLabel = skus.length === 1 ? "..." + skus[0].slice(-4) : `対象: ${myPickData.skus.length} SKU`;
                         block.innerHTML = `
-                            <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">対象: ${myPickData.skus.length} SKU</div>
+                            <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">${pickLabel}</div>
                             <div style="line-height: 1; font-weight: 900;">${myPickData.pendingQty}</div>
                         `;
                         block.onclick = (e) => {
@@ -477,8 +478,9 @@
                 } else if (myPickData && myPickData.pendingQty === 0) {
                     block.style.flexDirection = 'column';
                     block.classList.add('picking-done');
+                    const doneLabel = skus.length === 1 ? "..." + skus[0].slice(-4) : `完了済: ${myPickData.skus.length} SKU`;
                     block.innerHTML = `
-                        <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">完了済: ${myPickData.skus.length} SKU</div>
+                        <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">${doneLabel}</div>
                         <div style="line-height: 1; font-weight: 900;">${myPickData.totalQty}</div>
                     `;
                     block.style.setProperty('--pick-color', getPickColor(s));
@@ -490,7 +492,16 @@
                         if (isInjectPending) stateMgr.selectSlot(b, s);
                         else showSlotSkusModal(b, s, skus, stateMgr);
                     };
-                    block.textContent = skus.length === 1 ? "..." + skus[0].slice(-4) : `${skus.length} SKU`;
+                    if (skus.length === 1) {
+                        const totalQty = state.injectList?.[skus[0]] || 0;
+                        block.style.flexDirection = 'column';
+                        block.innerHTML = `
+                            <div style="font-size: 0.5em; font-weight: 800; opacity: 0.9; line-height: 1; padding-bottom: 4px;">...${skus[0].slice(-4)}</div>
+                            <div style="line-height: 1; font-weight: 900;">${totalQty}</div>
+                        `;
+                    } else {
+                        block.textContent = `${skus.length} SKU`;
+                    }
                     block.style.setProperty('--pick-color', getPickColor(s));
                 } else if (isInjectReady) {
                     block.classList.add('inject-ready');
