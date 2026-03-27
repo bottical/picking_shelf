@@ -90,7 +90,7 @@
             } else {
                 // 完了した瞬間を検知
                 if (lastIsWaiting) {
-                    new Audio('audio/start.mp3').play().catch(e => console.log(e));
+                    AudioManager.playStartSound();
                     scanInput.value = '';
                     setTimeout(() => scanInput.focus(), 100);
                 }
@@ -412,6 +412,7 @@
                 const totalQty = state.injectList?.[jan];
 
                 if (totalQty === undefined) {
+                    AudioManager.playErrorSound();
                     showMessage(`❌ SKU ${jan} はリストにありません`, 'error');
                 } else {
                     let alreadyInSlot = false;
@@ -421,6 +422,7 @@
                     });
 
                     if (alreadyInSlot) {
+                        AudioManager.playErrorSound();
                         showMessage(`⚠️ SKU ${jan} は既に枠に投入済みです`, 'error');
                     } else {
                         // 全ユーザーのピッキングをリセットしつつ、自身の投入待機状態をセット

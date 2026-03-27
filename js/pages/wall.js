@@ -357,7 +357,7 @@
 
                 const allDone = lines.every(l => l.status === 'DONE');
                 if (allDone) {
-                    new Audio('audio/complete.mp3').play().catch(e => console.log(e));
+                    AudioManager.playCompleteSound();
                     updates[`userStates.${stateMgr.currentUserId}.activePick`] = {};
                 } else {
                     const newActivePick = {};
