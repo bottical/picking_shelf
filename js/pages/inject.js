@@ -423,9 +423,14 @@
                     if (alreadyInSlot) {
                         showMessage(`⚠️ SKU ${jan} は既に枠に投入済みです`, 'error');
                     } else {
-                        // 状態更新のみ。
-                        stateMgr.updateUserState(stateMgr.currentUserId, {
-                            injectPending: { jan, status: "WAITING_SLOT", requestedAt: Date.now() }
+                        // モードを INJECT に変更し、待機状態をセット
+                        stateMgr.update({
+                            mode: 'INJECT',
+                            [`userStates.${stateMgr.currentUserId}.injectPending`]: { 
+                                jan, 
+                                status: "WAITING_SLOT", 
+                                requestedAt: Date.now() 
+                            }
                         });
                     }
                 }
