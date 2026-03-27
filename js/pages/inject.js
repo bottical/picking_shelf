@@ -59,6 +59,34 @@
             return s;
         };
 
+        function parseCsvLine(line) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                const next = line[i + 1];
+
+                if (char === '"') {
+                    if (inQuotes && next === '"') {
+                        current += '"';
+                        i++;
+                    } else {
+                        inQuotes = !inQuotes;
+                    }
+                } else if (char === ',' && !inQuotes) {
+                    result.push(current);
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+
+            result.push(current);
+            return result.map(v => v.trim());
+        }
+
         let lastIsWaiting = false;
         const updateUIState = (state) => {
             const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
@@ -365,13 +393,14 @@
                 const groupedPick = {};
 
                 lines.forEach(line => {
-                    const parts = line.split(',');
+                    const parts = parseCsvLine(line);
                     const maxIdx = Math.max(idxPick, idxJan, idxQty);
                     if (parts.length <= maxIdx) return;
 
-                    const pickNo = parts[idxPick].trim();
-                    const jan = normalizeJan(parts[idxJan]);
-                    const qty = parseInt(parts[idxQty]) || 0;
+                    const pickNo = String(parts[idxPick] ?? '').trim();
+                    const jan = normalizeJan(String(parts[idxJan] ?? '').trim());
+                    const qtyRaw = String(parts[idxQty] ?? '').trim();
+                    const qty = parseInt(qtyRaw, 10) || 0;
 
                     if (!jan || !pickNo) return;
 

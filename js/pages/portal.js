@@ -50,7 +50,7 @@
         document.getElementById('resetBtn').addEventListener('click', async () => {
             if (confirm("全てのデータを初期化してもよろしいですか？")) {
                 try {
-                    await stateMgr.reset();
+                    await stateMgr.resetPreserveConfig();
                     alert("リセット完了");
                 } catch (e) {
                     alert("エラー: " + e.message);
