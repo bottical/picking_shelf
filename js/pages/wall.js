@@ -349,6 +349,8 @@
             const orientation = state.config?.orientation || 'portrait';
             
             const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
+            const myActivePick = currentUserState.activePick || {};
+            const isUserPickingAnywhere = Object.values(myActivePick).some(p => p.pendingQty > 0);
             const isInjectPending = state.mode === 'INJECT' && currentUserState.injectPending && currentUserState.injectPending.status === 'WAITING_SLOT';
 
             const screen = document.createElement('div');
@@ -368,10 +370,14 @@
                 const slotData = state.slots?.[slotKey];
                 
                 const indicators = getIndicators(state, slotKey);
-                const myPickData = currentUserState.activePick?.[slotKey];
+                const myPickData = myActivePick[slotKey];
+                const isTargetForMe = myPickData && myPickData.pendingQty > 0;
 
                 const block = document.createElement('div');
                 block.className = 'block';
+                if (isUserPickingAnywhere && !isTargetForMe) {
+                    block.classList.add('grayed-out');
+                }
 
                 // Detailed Grid Placement
                 if (orientation === 'portrait') {
@@ -593,18 +599,22 @@
                 skus.forEach(sku => allocatedSkus.add(sku));
             });
             const unallocatedCount = Object.keys(injectList).filter(jan => !allocatedSkus.has(jan)).length;
-            const nextBayNo = (state.config?.bays || 9) + 1;
-            
+            const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
+            const myActivePick = currentUserState.activePick || {};
+            const isUserPickingAnywhere = Object.values(myActivePick).some(p => p.pendingQty > 0);
+
             const indicators = getIndicators(state, 'UNALLOCATED');
             const myPick = indicators.find(ind => ind.isMe);
+            const isTargetForMe = myPick && myPick.qty > 0;
             const isAnyPick = indicators.length > 0;
             const isDone = myPick && myPick.qty === 0;
 
+            const blackoutClass = (isUserPickingAnywhere && !isTargetForMe) ? 'grayed-out' : '';
             const bgColor = myPick ? (isDone ? '#000000' : '#ca8a04') : (isAnyPick ? '#334155' : '#1e293b');
             const borderColor = isAnyPick ? '#eab308' : '#334155';
 
             bay10Container.innerHTML = `
-                <div class="mobile-screen" style="flex-direction: row; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border: 1px solid ${borderColor}; border-radius: 6px; background: ${bgColor}; color: white; position: relative;">
+                <div class="mobile-screen ${blackoutClass}" style="flex-direction: row; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border: 1px solid ${borderColor}; border-radius: 6px; background: ${bgColor}; color: white; position: relative;">
                     <div style="display: flex; flex-direction: column;">
                         <span style="color: #94a3b8; font-size: 0.7rem; font-weight: 800;">No.${nextBayNo}</span>
                         <span style="font-size: 1.1rem; font-weight: 800;">その他（未割り当て）</span>
@@ -640,7 +650,6 @@
             container.className = 'mobile-screen';
             const nextBayNo = (state.config?.bays || 9) + 1;
             const indicators = getIndicators(state, 'UNALLOCATED');
-            const myPick = indicators.find(ind => ind.isMe);
             const isAnyPick = indicators.length > 0;
 
             container.innerHTML = `
@@ -650,11 +659,21 @@
                 </div>
             `;
 
+            const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
+            const myActivePick = currentUserState.activePick || {};
+            const isUserPickingAnywhere = Object.values(myActivePick).some(p => p.pendingQty > 0);
+            
+            const myPick = indicators.find(ind => ind.isMe);
+            const isTargetForMe = myPick && myPick.qty > 0;
+
             const body = document.createElement('div');
             body.className = 'screen-body grid-split-1';
 
             const block = document.createElement('div');
             block.className = 'block';
+            if (isUserPickingAnywhere && !isTargetForMe) {
+                block.classList.add('grayed-out');
+            }
 
             if (isAnyPick) {
                 block.style.flexDirection = 'column';
