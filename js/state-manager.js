@@ -118,15 +118,58 @@ StateManager.prototype.update = function (updates) {
     return docRef.update(updates);
 };
 
-StateManager.prototype.updateUserState = function (userId, userUpdates) {
-    const updates = {};
-    for (const [key, value] of Object.entries(userUpdates)) {
-        updates[`userStates.${userId}.${key}`] = value;
+StateManager.prototype._applyResetLogic = function (userId, data, updates) {
+    const userState = data.userStates?.[userId];
+    if (!userState) return;
+
+    const oldListId = userState.currentPickingNo;
+    if (oldListId && data.pickLists?.[oldListId]) {
+        const lines = data.pickLists[oldListId];
+        const allDone = lines.length > 0 && lines.every(l => l.status === 'DONE');
+        if (!allDone) {
+            updates[`pickLists.${oldListId}`] = lines.map(l => ({ ...l, status: 'PENDING' }));
+        }
     }
-    return this.update(updates);
+    updates[`userStates.${userId}.currentPickingNo`] = null;
+    updates[`userStates.${userId}.activePick`] = {};
 };
 
-// Start picking a list (implements precedence rule)
+StateManager.prototype.resetUserPick = function (userId) {
+    if (!this.user || !this.state) return Promise.reject("Not authenticated");
+    return this.db.runTransaction(async (transaction) => {
+        const docRef = this.db.collection("users").doc(this.user.uid).collection("states").doc("current");
+        const doc = await transaction.get(docRef);
+        if (!doc.exists) return;
+        const data = doc.data();
+        const updates = { 
+            mode: 'INJECT',
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp() 
+        };
+        this._applyResetLogic(userId, data, updates);
+        transaction.update(docRef, updates);
+    });
+};
+
+StateManager.prototype.cancelAllPicks = function (extraUpdates = {}) {
+    if (!this.user || !this.state) return Promise.reject("Not authenticated");
+    return this.db.runTransaction(async (transaction) => {
+        const docRef = this.db.collection("users").doc(this.user.uid).collection("states").doc("current");
+        const doc = await transaction.get(docRef);
+        if (!doc.exists) return;
+        const data = doc.data();
+        const updates = { 
+            mode: 'INJECT',
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            ...extraUpdates
+        };
+        Object.keys(data.userStates || {}).forEach(uId => {
+            this._applyResetLogic(uId, data, updates);
+        });
+        transaction.update(docRef, updates);
+    });
+};
+
+// Start picking a list (implements precedence rule and reset rule)
 StateManager.prototype.startPicking = function (listId, activePickData) {
     if (!this.user || !this.state) return;
 
@@ -141,9 +184,15 @@ StateManager.prototype.startPicking = function (listId, activePickData) {
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         };
 
-        // Precedence Rule: If anyone else is picking this list, remove it from them
+        // Reset previous list for THIS user if it was different and incomplete
+        const currentUserState = userStates[this.currentUserId];
+        if (currentUserState && currentUserState.currentPickingNo !== listId) {
+            this._applyResetLogic(this.currentUserId, data, updates);
+        }
+
+        // Precedence Rule: If anyone else is picking THIS new list, remove it from them
         Object.keys(userStates).forEach(uId => {
-            if (userStates[uId].currentPickingNo === listId) {
+            if (uId !== this.currentUserId && userStates[uId].currentPickingNo === listId) {
                 updates[`userStates.${uId}.currentPickingNo`] = null;
                 updates[`userStates.${uId}.activePick`] = {};
             }

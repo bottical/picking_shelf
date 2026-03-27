@@ -218,12 +218,9 @@
             const currentUserState = stateMgr.state.userStates?.[stateMgr.currentUserId];
             if (!currentUserState?.currentPickingNo) return;
             
-            stateMgr.update({
-                [`userStates.${stateMgr.currentUserId}.currentPickingNo`]: null,
-                [`userStates.${stateMgr.currentUserId}.activePick`]: {},
-                mode: 'INJECT'
+            stateMgr.resetUserPick(stateMgr.currentUserId).then(() => {
+                alert("ピッキング作業をリセットしました（未完了の進捗もクリアされました）");
             });
-            alert("ピッキング作業をリセットしました");
         };
 
         const userSelect = document.getElementById('userSelect');
