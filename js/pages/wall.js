@@ -24,6 +24,22 @@
         const settingMultiStartId = document.getElementById('settingMultiStartId');
         const saveSettingsBtn = document.getElementById('saveSettingsBtn');
         const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+        const DEVICE_SETTINGS_KEY = 'picking_shelf_wall_device_settings_v1';
+
+        const getDeviceWallSettings = () => {
+            try {
+                return JSON.parse(localStorage.getItem(DEVICE_SETTINGS_KEY) || '{}');
+            } catch (e) {
+                return {};
+            }
+        };
+
+        const saveDeviceWallSettings = (partial) => {
+            const current = getDeviceWallSettings();
+            const next = { ...current, ...partial };
+            localStorage.setItem(DEVICE_SETTINGS_KEY, JSON.stringify(next));
+            return next;
+        };
 
         // Bay Edit Elements
         const bayEditOverlay = document.getElementById('bayEditOverlay');
@@ -89,7 +105,8 @@
             if (cfg.orientation) settingOrientation.value = cfg.orientation;
             if (cfg.multiRows) settingMultiRows.value = cfg.multiRows;
             if (cfg.multiCols) settingMultiCols.value = cfg.multiCols;
-            if (cfg.multiStartId) settingMultiStartId.value = cfg.multiStartId;
+            const deviceSettings = getDeviceWallSettings();
+            settingMultiStartId.value = deviceSettings.multiStartId || cfg.multiStartId || 1;
             document.getElementById('settingShowOthers').checked = cfg.showOthers !== false;
             settingViewMode.dispatchEvent(new Event('change'));
         };
@@ -112,10 +129,11 @@
                 orientation: settingOrientation.value,
                 multiRows: parseInt(settingMultiRows.value) || 3,
                 multiCols: parseInt(settingMultiCols.value) || 3,
-                multiStartId: parseInt(settingMultiStartId.value) || 1,
                 showOthers: document.getElementById('settingShowOthers').checked,
                 maxSplit: 6
             };
+            const localMultiStartId = Math.max(1, parseInt(settingMultiStartId.value, 10) || 1);
+            saveDeviceWallSettings({ multiStartId: localMultiStartId });
             stateMgr.update({ config: newConfig });
             hideSetup();
             currentSingleBayId = null; // reset to selector if in single mode
@@ -830,14 +848,18 @@
 
                 const r = config.multiRows || 3;
                 const c = config.multiCols || 3;
-                const start = config.multiStartId || 1;
-                const end = Math.min(config.bays, start + (r * c) - 1);
+                const deviceSettings = getDeviceWallSettings();
+                const start = Math.max(1, parseInt(deviceSettings.multiStartId, 10) || 1);
+                const totalBays = config.bays || 0;
+                const maxStart = Math.max(1, totalBays - (r * c) + 1);
+                const normalizedStart = Math.min(Math.max(1, start), maxStart);
+                const end = Math.min(config.bays, normalizedStart + (r * c) - 1);
 
                 multiViewContainer.style.gridTemplateColumns = `repeat(${c}, 1fr)`;
                 multiViewContainer.style.gridTemplateRows = `repeat(${r}, 1fr)`;
                 multiViewContainer.innerHTML = '';
 
-                for (let b = start; b <= end; b++) {
+                for (let b = normalizedStart; b <= end; b++) {
                     multiViewContainer.appendChild(renderBayContent(b, state, false));
                 }
 
