@@ -32,7 +32,7 @@
 
         const loadList = (id) => {
             if (!stateMgr.state.pickLists?.[id]) {
-                new Audio('audio/error.mp3').play().catch(e => console.log(e));
+                AudioManager.playErrorSound();
                 listIdInput.value = '';
                 currentListTitle.innerHTML = `<span style="color: var(--danger);">エラー：見つかりません (${id})</span>`;
                 pickTable.innerHTML = `<tr><td colspan="5" style="padding:3rem; text-align:center; color:var(--danger); font-size:1.2rem; font-weight:bold;">入力されたピッキングNo.「${id}」が存在しません。</td></tr>`;
@@ -44,9 +44,9 @@
             
             const allCompleted = lines.length > 0 && lines.every(l => l.status === 'DONE');
             if (allCompleted) {
-                new Audio('audio/error.mp3').play().catch(e => console.log(e));
+                AudioManager.playErrorSound();
             } else {
-                new Audio('audio/start.mp3').play().catch(e => console.log(e));
+                AudioManager.playStartSound();
             }
 
             const newActivePick = {};
@@ -153,7 +153,7 @@
             const allDone = lines.every(l => l.status === 'DONE');
 
             if (allDone) {
-                new Audio('audio/complete.mp3').play().catch(e => console.log(e));
+                AudioManager.playCompleteSound();
                 updates[`userStates.${stateMgr.currentUserId}.activePick`] = {};
             } else {
                 const newActivePick = {};
