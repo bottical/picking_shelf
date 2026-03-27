@@ -186,6 +186,79 @@
             return orientation === 'portrait' ? 'grid-split-6-p' : 'grid-split-6-l';
         };
 
+        const SLOT_LAYOUTS = {
+            portrait: {
+                2: {
+                    2: { row: '1', column: '1' },
+                    1: { row: '2', column: '1' }
+                },
+                3: {
+                    3: { row: '1', column: '1 / span 2' },
+                    1: { row: '2', column: '1' },
+                    2: { row: '2', column: '2' }
+                },
+                4: {
+                    3: { row: '1', column: '1' },
+                    4: { row: '1', column: '2' },
+                    1: { row: '2', column: '1' },
+                    2: { row: '2', column: '2' }
+                },
+                5: {
+                    5: { row: '1', column: '1 / span 2' },
+                    3: { row: '2', column: '1' },
+                    4: { row: '2', column: '2' },
+                    1: { row: '3', column: '1' },
+                    2: { row: '3', column: '2' }
+                },
+                6: {
+                    5: { row: '1', column: '1' },
+                    6: { row: '1', column: '2' },
+                    3: { row: '2', column: '1' },
+                    4: { row: '2', column: '2' },
+                    1: { row: '3', column: '1' },
+                    2: { row: '3', column: '2' }
+                }
+            },
+            landscape: {
+                2: {
+                    2: { row: '1', column: '1' },
+                    1: { row: '1', column: '2' }
+                },
+                3: {
+                    3: { row: '1', column: '1 / span 2' },
+                    1: { row: '2', column: '1' },
+                    2: { row: '2', column: '2' }
+                },
+                4: {
+                    3: { row: '1', column: '1' },
+                    4: { row: '2', column: '1' },
+                    1: { row: '1', column: '2' },
+                    2: { row: '2', column: '2' }
+                },
+                5: {
+                    5: { row: '1 / span 2', column: '1' },
+                    3: { row: '1', column: '2' },
+                    4: { row: '2', column: '2' },
+                    1: { row: '1', column: '3' },
+                    2: { row: '2', column: '3' }
+                },
+                6: {
+                    5: { row: '1', column: '1' },
+                    6: { row: '2', column: '1' },
+                    3: { row: '1', column: '2' },
+                    4: { row: '2', column: '2' },
+                    1: { row: '1', column: '3' },
+                    2: { row: '2', column: '3' }
+                }
+            }
+        };
+
+        const getSlotPlacement = (splitCount, slotNo, orientation) => {
+            const orientationLayouts = SLOT_LAYOUTS[orientation];
+            if (!orientationLayouts) return null;
+            return orientationLayouts[splitCount]?.[slotNo] || null;
+        };
+
         const showSlotSkusModal = (b, s, skus, stateMgr) => {
             let overlay = document.getElementById('slotSkusOverlay');
             if (overlay) overlay.remove();
@@ -379,63 +452,9 @@
                     block.classList.add('grayed-out');
                 }
 
-                // Detailed Grid Placement
-                if (orientation === 'portrait') {
-                    if (splitCount === 2) {
-                        if (s === 2) { block.style.gridRow = '1'; block.style.gridColumn = '1'; }
-                        if (s === 1) { block.style.gridRow = '2'; block.style.gridColumn = '1'; }
-                    } else if (splitCount === 3) {
-                        if (s === 3) { block.style.gridRow = '1'; block.style.gridColumn = '1 / span 2'; }
-                        if (s === 1) { block.style.gridRow = '2'; block.style.gridColumn = '1'; }
-                        if (s === 2) { block.style.gridRow = '2'; block.style.gridColumn = '2'; }
-                    } else if (splitCount === 4) {
-                        if (s === 3) { block.style.gridRow = '1'; block.style.gridColumn = '1'; }
-                        if (s === 4) { block.style.gridRow = '1'; block.style.gridColumn = '2'; }
-                        if (s === 1) { block.style.gridRow = '2'; block.style.gridColumn = '1'; }
-                        if (s === 2) { block.style.gridRow = '2'; block.style.gridColumn = '2'; }
-                    } else if (splitCount === 5) {
-                        if (s === 5) { block.style.gridRow = '1 / span 2'; block.style.gridColumn = '1'; }
-                        if (s === 3) { block.style.gridRow = '1'; block.style.gridColumn = '2'; }
-                        if (s === 4) { block.style.gridRow = '2'; block.style.gridColumn = '2'; }
-                        if (s === 1) { block.style.gridRow = '3'; block.style.gridColumn = '1'; }
-                        if (s === 2) { block.style.gridRow = '3'; block.style.gridColumn = '2'; }
-                    } else if (splitCount === 6) {
-                        if (s === 5) { block.style.gridRow = '1'; block.style.gridColumn = '1'; }
-                        if (s === 6) { block.style.gridRow = '1'; block.style.gridColumn = '2'; }
-                        if (s === 3) { block.style.gridRow = '2'; block.style.gridColumn = '1'; }
-                        if (s === 4) { block.style.gridRow = '2'; block.style.gridColumn = '2'; }
-                        if (s === 1) { block.style.gridRow = '3'; block.style.gridColumn = '1'; }
-                        if (s === 2) { block.style.gridRow = '3'; block.style.gridColumn = '2'; }
-                    }
-                } else {
-                    // Landscape
-                    if (splitCount === 2) {
-                        if (s === 2) { block.style.gridRow = '1'; block.style.gridColumn = '1'; }
-                        if (s === 1) { block.style.gridRow = '1'; block.style.gridColumn = '2'; }
-                    } else if (splitCount === 3) {
-                        if (s === 3) { block.style.gridRow = '1'; block.style.gridColumn = '1 / span 2'; }
-                        if (s === 1) { block.style.gridRow = '2'; block.style.gridColumn = '1'; }
-                        if (s === 2) { block.style.gridRow = '2'; block.style.gridColumn = '2'; }
-                    } else if (splitCount === 4) {
-                        if (s === 3) { block.style.gridRow = '1'; block.style.gridColumn = '1'; }
-                        if (s === 4) { block.style.gridRow = '2'; block.style.gridColumn = '1'; }
-                        if (s === 1) { block.style.gridRow = '1'; block.style.gridColumn = '2'; }
-                        if (s === 2) { block.style.gridRow = '2'; block.style.gridColumn = '2'; }
-                    } else if (splitCount === 5) {
-                        if (s === 5) { block.style.gridRow = '1 / span 2'; block.style.gridColumn = '1'; }
-                        if (s === 3) { block.style.gridRow = '1'; block.style.gridColumn = '2'; }
-                        if (s === 4) { block.style.gridRow = '2'; block.style.gridColumn = '2'; }
-                        if (s === 1) { block.style.gridRow = '1'; block.style.gridColumn = '3'; }
-                        if (s === 2) { block.style.gridRow = '2'; block.style.gridColumn = '3'; }
-                    } else if (splitCount === 6) {
-                        if (s === 5) { block.style.gridRow = '1'; block.style.gridColumn = '1'; }
-                        if (s === 6) { block.style.gridRow = '2'; block.style.gridColumn = '1'; }
-                        if (s === 3) { block.style.gridRow = '1'; block.style.gridColumn = '2'; }
-                        if (s === 4) { block.style.gridRow = '2'; block.style.gridColumn = '2'; }
-                        if (s === 1) { block.style.gridRow = '1'; block.style.gridColumn = '3'; }
-                        if (s === 2) { block.style.gridRow = '2'; block.style.gridColumn = '3'; }
-                    }
-                }
+                const placement = getSlotPlacement(splitCount, s, orientation);
+                if (placement?.row) block.style.gridRow = placement.row;
+                if (placement?.column) block.style.gridColumn = placement.column;
 
                 const skus = slotData ? (slotData.skus || (slotData.sku ? [slotData.sku] : [])) : [];
                 const isInjectReady = state.mode === 'INJECT' && isInjectPending && isConfigured;
