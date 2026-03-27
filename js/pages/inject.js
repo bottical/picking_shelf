@@ -150,6 +150,16 @@
             return janToSlot;
         };
 
+        const getMergedSlots = (state) => {
+            const baseSlots = { ...(state.slots || {}) };
+            const optimisticSlots = stateMgr.localUiState.optimisticSlots || {};
+            Object.entries(optimisticSlots).forEach(([slotKey, optimisticSlot]) => {
+                if (!optimisticSlot) return;
+                baseSlots[slotKey] = { skus: [...(optimisticSlot.skus || [])] };
+            });
+            return baseSlots;
+        };
+
         const showSlotSkusModal = (b, s, skus, stateMgr) => {
             let overlay = document.getElementById('slotSkusOverlay');
             if (overlay) overlay.remove();
@@ -221,6 +231,7 @@
 
         const render = (state) => {
             bayGrid.innerHTML = '';
+            const mergedSlots = getMergedSlots(state);
             const totalBays = state.config?.bays || 9;
             for (let b = 1; b <= totalBays; b++) {
                 const splits = state.splits?.[b];
@@ -246,7 +257,7 @@
 
                     for (let s = 1; s <= splits; s++) {
                         const slotKey = `${b}-${s}`;
-                        const slotData = state.slots?.[slotKey];
+                        const slotData = mergedSlots[slotKey];
                         const slot = document.createElement('div');
                         slot.className = 'slot';
 
@@ -307,7 +318,7 @@
             const bay10Container = document.getElementById('bay10Container');
             if (bay10Container) {
                 const injectList = state.injectList || {};
-                const slots = state.slots || {};
+                const slots = mergedSlots;
                 
                 // Get all SKUs currently in slots
                 const allocatedSkus = new Set();
@@ -462,7 +473,7 @@
                     AudioManager.playErrorSound();
                     showMessage(`❌ SKU ${jan} はリストにありません`, 'error');
                 } else {
-                    const janToSlot = buildJanToSlotMap(state.slots || {});
+                    const janToSlot = buildJanToSlotMap(getMergedSlots(state));
                     const alreadyInSlot = !!janToSlot[jan];
 
                     if (alreadyInSlot) {

@@ -593,10 +593,11 @@
                     };
                     if (skus.length === 1) {
                         const totalQty = state.injectList?.[skus[0]] || 0;
-                        const label = denseEnabled && splitCount >= 6 ? 'SKU' : `...${skus[0].slice(-4)}`;
+                        const label = denseEnabled && splitCount >= 6 ? '1SKU' : '1 SKU';
                         renderStackedBlock(block, label, `${totalQty}`);
                     } else {
-                        block.textContent = `${skus.length} SKU`;
+                        const totalQty = skus.reduce((sum, jan) => sum + (state.injectList?.[jan] || 0), 0);
+                        renderStackedBlock(block, `${skus.length} SKU`, totalQty > 0 ? `${totalQty}` : '');
                     }
                     block.style.setProperty('--pick-color', getPickColor(s));
                 } else if (isInjectReady) {

@@ -480,7 +480,9 @@ StateManager.prototype.selectSlot = function (bayId, subId) {
         const data = doc.data();
         const userState = data.userStates[this.currentUserId];
 
-        if (!userState?.injectPending || userState.injectPending.jan !== pendingJan) return;
+        if (!userState?.injectPending || userState.injectPending.jan !== pendingJan) {
+            throw new Error('injectPending is not synced to Firestore yet');
+        }
 
         const slots = data.slots || {};
         const currentSlot = slots[slotKey] || {};
