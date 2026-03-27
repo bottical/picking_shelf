@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>ピッキングシェルフ - ウォール</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
     <style>
         html {
             min-height: 100%;
@@ -63,6 +66,9 @@
         }
         .wall-scroll-hint.is-hidden {
             opacity: 0;
+        }
+        .pwa-install-hint-slot {
+            display: none;
         }
         .wall-grid {
             display: grid;
@@ -292,6 +298,7 @@
     </div>
 
     <div id="wallScrollHint" class="wall-scroll-hint hidden">少し下にスワイプすると表示領域が広がります</div>
+    <div id="pwaInstallHintSlot" class="pwa-install-hint-slot" data-pwa-install-hint-slot aria-hidden="true"></div>
 
     <!-- Setup Overlay -->
     <div id="setupOverlay" class="setup-needed hidden" style="z-index: 1000;">
@@ -363,6 +370,18 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     <script>
         (function () {
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+            document.body.dataset.displayMode = isStandalone ? 'standalone' : 'browser';
+            if (!isStandalone) {
+                document.body.classList.add('is-browser-mode');
+                document.dispatchEvent(new CustomEvent('wall:pwa-browser-mode', {
+                    detail: {
+                        canRecommendInstall: true,
+                        hintSlotId: 'pwaInstallHintSlot'
+                    }
+                }));
+            }
+
             const hintStorageKey = 'wallScrollHintDismissed';
             const hintEl = document.getElementById('wallScrollHint');
             if (!hintEl || localStorage.getItem(hintStorageKey) === '1') return;
