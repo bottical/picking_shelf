@@ -85,19 +85,34 @@ StateManager.prototype.migrateToMultiUser = function (uid, oldData) {
 };
 
 StateManager.prototype.initializeNewSession = function (uid) {
+    const defaultConfig = {
+        bays: null,
+        maxSplit: 6,
+        viewMode: 'multi',
+        orientation: 'landscape',
+        multiRows: 3,
+        multiCols: 3,
+        showOthers: false
+    };
+
+    const sourceConfig = this.state?.config || {};
+    const { multiStartId: _legacyMultiStartId, ...sourceConfigWithoutLegacy } = sourceConfig;
+    const config = {
+        ...defaultConfig,
+        ...sourceConfigWithoutLegacy
+    };
+
+    const totalBays = config.bays || 0;
+    const splits = {};
+    for (let b = 1; b <= totalBays; b++) {
+        splits[b] = this.state?.splits?.[b] || 1;
+    }
+
     const initialState = {
         mode: 'INJECT',
-        config: { 
-            bays: null, 
-            maxSplit: 6,
-            viewMode: 'multi',
-            orientation: 'landscape',
-            multiRows: 3,
-            multiCols: 3,
-            multiStartId: 1
-        },
+        config,
         slots: {},
-        splits: {},
+        splits,
         injectList: {},
         pickLists: {},
         userStates: {
@@ -205,6 +220,50 @@ StateManager.prototype.startPicking = function (listId, activePickData) {
 
         transaction.update(docRef, updates);
     });
+};
+
+StateManager.prototype.resetPreserveConfig = function () {
+    if (!this.user) return Promise.reject("Not authenticated");
+
+    const current = this.state || {};
+    const currentConfig = current.config || {};
+    const totalBays = currentConfig.bays || 9;
+
+    const splits = {};
+    for (let b = 1; b <= totalBays; b++) {
+        splits[b] = 1;
+    }
+
+    const nextState = {
+        mode: 'INJECT',
+        config: {
+            bays: totalBays,
+            maxSplit: currentConfig.maxSplit || 6,
+            viewMode: currentConfig.viewMode || 'multi',
+            orientation: currentConfig.orientation || 'landscape',
+            multiRows: currentConfig.multiRows || 3,
+            multiCols: currentConfig.multiCols || 3,
+            showOthers: !!currentConfig.showOthers,
+            csvFormat: currentConfig.csvFormat || undefined
+        },
+        slots: {},
+        splits,
+        injectList: {},
+        pickLists: {},
+        userStates: {
+            user1: { activePick: {}, currentPickingNo: null, injectPending: null },
+            user2: { activePick: {}, currentPickingNo: null, injectPending: null },
+            user3: { activePick: {}, currentPickingNo: null, injectPending: null },
+            user4: { activePick: {}, currentPickingNo: null, injectPending: null }
+        },
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+
+    if (nextState.config.csvFormat === undefined) {
+        delete nextState.config.csvFormat;
+    }
+
+    return this.db.collection("users").doc(this.user.uid).collection("states").doc("current").set(nextState);
 };
 
 StateManager.prototype.reset = function () {
