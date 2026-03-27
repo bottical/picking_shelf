@@ -141,6 +141,17 @@
             min-height: 0;
             min-width: 0;
             overflow: hidden;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+        .block,
+        .block * {
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
         }
         .block.filled {
             background: var(--pick-color);
@@ -177,6 +188,10 @@
             color: var(--pick-color);
             cursor: pointer;
             animation: pulse 1.5s infinite;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
         }
         @keyframes pulse {
             0% { opacity: 0.6; }
