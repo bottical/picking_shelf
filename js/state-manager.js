@@ -440,10 +440,19 @@ StateManager.prototype.update = function (updates) {
     if (!this.user) return Promise.reject("Not authenticated");
     const uid = this.user.uid;
     const docRef = this._getStateDocRef(uid);
-    return docRef.set({
+    const payload = {
         ...updates,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true }).catch((error) => {
+    };
+
+    return docRef.update(payload).catch(async (error) => {
+        const isNotFound =
+            error?.code === 'not-found' ||
+            /No document to update/i.test(error?.message || '');
+        if (isNotFound) {
+            await docRef.set(payload, { merge: true });
+            return;
+        }
         this._logFirestoreError('update', error, uid);
         throw error;
     });
