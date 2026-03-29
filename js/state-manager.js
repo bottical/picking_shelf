@@ -73,21 +73,23 @@ StateManager.prototype.clearLocalInjectPending = function () {
     this._notifyUiOnlyChange();
 };
 
+StateManager.prototype.isInjectRequestCancelled = function (requestId) {
+    if (!requestId) return false;
+    return !!(this.localUiState.cancelledInjectRequestIds && this.localUiState.cancelledInjectRequestIds[requestId]);
+};
+
 StateManager.prototype.cancelInjectPending = function () {
     if (!this.user) return Promise.reject("Not authenticated");
 
     const currentUserState = this.state?.userStates?.[this.currentUserId] || {};
-    const pending = currentUserState.injectPending || this.localUiState.injectPendingPreview;
+    const pendingFromRemote = currentUserState.injectPending || null;
+    const pendingFromLocal = this.localUiState.injectPendingPreview || null;
+    const pending = pendingFromRemote || pendingFromLocal;
 
-    if (!pending) {
-        this.clearLocalInjectPending();
-        return Promise.resolve();
-    }
-
-    const requestId = pending.requestId || null;
+    const requestId = pending?.requestId || null;
     if (requestId) {
         this.localUiState.cancelledInjectRequestIds[requestId] = {
-            jan: pending.jan || null,
+            jan: pending?.jan || null,
             cancelledAt: Date.now()
         };
     }
@@ -166,6 +168,8 @@ StateManager.prototype._reconcileLocalUiStateWithRemote = function (remoteState)
     const remoteSlots = remoteState?.slots || {};
     const optimisticSlots = this.localUiState.optimisticSlots || {};
     const remoteUserPending = remoteState?.userStates?.[this.currentUserId]?.injectPending;
+    const remotePendingRequestId = remoteUserPending?.requestId || null;
+    const remotePendingCancelledLocally = this.isInjectRequestCancelled(remotePendingRequestId);
     let changed = false;
 
     Object.keys(optimisticSlots).forEach((slotKey) => {
@@ -176,7 +180,8 @@ StateManager.prototype._reconcileLocalUiStateWithRemote = function (remoteState)
 
         const remoteSkus = remoteSlots[slotKey]?.skus || (remoteSlots[slotKey]?.sku ? [remoteSlots[slotKey].sku] : []);
         const hasRemoteCommit = remoteSkus.includes(jan);
-        const isPendingClearedForThisJan = !remoteUserPending || remoteUserPending.jan !== jan;
+        const effectiveRemotePending = remotePendingCancelledLocally ? null : remoteUserPending;
+        const isPendingClearedForThisJan = !effectiveRemotePending || effectiveRemotePending.jan !== jan;
         const remoteConfirmed = hasRemoteCommit && isPendingClearedForThisJan;
 
         const committedAt = slot?._meta?.committedAt || 0;
@@ -193,7 +198,9 @@ StateManager.prototype._reconcileLocalUiStateWithRemote = function (remoteState)
 
     const localPending = this.localUiState.injectPendingPreview;
     if (localPending) {
-        const remotePending = remoteState?.userStates?.[this.currentUserId]?.injectPending || null;
+        const remotePending = remotePendingCancelledLocally
+            ? null
+            : (remoteState?.userStates?.[this.currentUserId]?.injectPending || null);
         const localJan = localPending.jan;
         const localRequestId = localPending.requestId || null;
 
@@ -211,6 +218,13 @@ StateManager.prototype._reconcileLocalUiStateWithRemote = function (remoteState)
             this.localUiState.injectPendingPreview = null;
             changed = true;
         }
+
+        if (remotePendingCancelledLocally && (!localRequestId || localRequestId === remotePendingRequestId)) {
+            this.localUiState.injectPendingPreview = null;
+            changed = true;
+        }
+    } else if (remotePendingCancelledLocally) {
+        changed = true;
     }
 
     const cancelledMap = this.localUiState.cancelledInjectRequestIds || {};
@@ -218,7 +232,6 @@ StateManager.prototype._reconcileLocalUiStateWithRemote = function (remoteState)
         const info = cancelledMap[reqId] || {};
         const cancelledAt = info.cancelledAt || 0;
         const jan = info.jan || null;
-        const remotePendingRequestId = remoteUserPending?.requestId || null;
         const stillPendingRemotely = remotePendingRequestId === reqId;
         const janExistsSomewhere = jan && Object.values(remoteSlots).some((slot) => {
             const skus = slot?.skus || (slot?.sku ? [slot.sku] : []);
@@ -483,6 +496,66 @@ StateManager.prototype.cancelAllPicks = function (extraUpdates = {}) {
         transaction.update(docRef, updates);
     }).catch((error) => {
         this._logFirestoreError('cancelAllPicks', error, uid);
+        throw error;
+    });
+};
+
+StateManager.prototype.saveInjectPendingSafely = function (pending) {
+    if (!this.user || !this.state) return Promise.reject("Not authenticated");
+    if (!pending || !pending.requestId) return Promise.reject("Invalid pending");
+
+    const uid = this.user.uid;
+    const requestId = pending.requestId;
+    const requestedAt = pending.requestedAt || Date.now();
+
+    if (this.isInjectRequestCancelled(requestId)) {
+        return Promise.resolve({ skipped: true, reason: 'cancelled-before-start' });
+    }
+
+    return this.db.runTransaction(async (transaction) => {
+        const docRef = this._getStateDocRef(uid);
+        const doc = await transaction.get(docRef);
+        if (!doc.exists) return { skipped: true, reason: 'missing-doc' };
+
+        if (this.isInjectRequestCancelled(requestId)) {
+            return { skipped: true, reason: 'cancelled-during-transaction' };
+        }
+
+        const data = doc.data() || {};
+        const userStates = data.userStates || {};
+        const currentUserState = userStates[this.currentUserId] || {};
+        const remotePending = currentUserState.injectPending || null;
+
+        if (remotePending) {
+            const remoteRequestId = remotePending.requestId || null;
+            const remoteRequestedAt = remotePending.requestedAt || 0;
+            const isDifferentRequest = remoteRequestId && remoteRequestId !== requestId;
+            const isRemoteNewer = remoteRequestedAt > requestedAt;
+            if (isDifferentRequest && isRemoteNewer) {
+                return { skipped: true, reason: 'newer-remote-pending-exists' };
+            }
+        } else if (this.isInjectRequestCancelled(requestId)) {
+            return { skipped: true, reason: 'cancelled-with-remote-null' };
+        }
+
+        const updates = {
+            mode: 'INJECT',
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        Object.keys(userStates).forEach((uId) => {
+            this._applyResetLogic(uId, data, updates);
+        });
+
+        if (this.isInjectRequestCancelled(requestId)) {
+            return { skipped: true, reason: 'cancelled-before-update' };
+        }
+
+        updates[`userStates.${this.currentUserId}.injectPending`] = { ...pending };
+        transaction.update(docRef, updates);
+        return { skipped: false };
+    }).catch((error) => {
+        this._logFirestoreError('saveInjectPendingSafely', error, uid);
         throw error;
     });
 };

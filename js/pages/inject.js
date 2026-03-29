@@ -530,11 +530,17 @@
                     scanInput.parentElement.style.opacity = '0.5';
                     showMessage(`✅ SKU ${jan} を受け付けました。投入先の枠をタップしてください。`, 'info');
                     try {
-                        await stateMgr.cancelAllPicks({
-                            [`userStates.${stateMgr.currentUserId}.injectPending`]: {
-                                ...pending
-                            }
-                        });
+                        const saveResult = await stateMgr.saveInjectPendingSafely(pending);
+                        if (saveResult?.skipped) {
+                            console.debug('saveInjectPendingSafely skipped', saveResult);
+                            stateMgr.clearLocalInjectPending();
+                            scanInput.disabled = false;
+                            scanInput.parentElement.style.opacity = '1';
+                            scanInput.value = '';
+                            scanMsg.classList.add('hidden');
+                            setTimeout(() => scanInput.focus(), 50);
+                            return;
+                        }
                     } catch (error) {
                         console.error('injectPending の保存に失敗しました:', error);
                         stateMgr.rollbackOptimisticInject();
