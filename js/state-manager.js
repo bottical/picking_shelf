@@ -573,6 +573,21 @@ StateManager.prototype.saveInjectPendingSafely = function (pending) {
         const userStates = data.userStates || {};
         const currentUserState = userStates[this.currentUserId] || {};
         const remotePending = currentUserState.injectPending || null;
+        const remoteCancelled = currentUserState.injectPendingCancelled || null;
+        const remoteCancelledRequestId = remoteCancelled?.requestId || null;
+        const remoteCancelledAt = remoteCancelled?.cancelledAt || 0;
+
+        const isSameRequestCancelled =
+            remoteCancelledRequestId &&
+            remoteCancelledRequestId === requestId;
+
+        const isCancelledAfterRequest =
+            remoteCancelledAt > 0 &&
+            remoteCancelledAt >= requestedAt;
+
+        if (isSameRequestCancelled || isCancelledAfterRequest) {
+            return { skipped: true, reason: 'remote-cancelled' };
+        }
 
         if (remotePending) {
             const remoteRequestId = remotePending.requestId || null;
@@ -597,6 +612,10 @@ StateManager.prototype.saveInjectPendingSafely = function (pending) {
 
         if (this.isInjectRequestCancelled(requestId)) {
             return { skipped: true, reason: 'cancelled-before-update' };
+        }
+
+        if (isSameRequestCancelled || isCancelledAfterRequest) {
+            return { skipped: true, reason: 'remote-cancelled-before-update' };
         }
 
         updates[`userStates.${this.currentUserId}.injectPending`] = { ...pending };
