@@ -143,13 +143,16 @@
         let lastIsWaiting = false;
         let lastWaitingJan = null;
         let lastWaitingJanWasAssigned = false;
-        const getEffectiveInjectPending = (state) => {
-            const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
-            return currentUserState.injectPending || stateMgr.localUiState.injectPendingPreview;
-        };
 
         const updateUIState = (state) => {
-            const pending = getEffectiveInjectPending(state);
+            const pending = stateMgr.getEffectiveInjectPendingForCurrentUser(state);
+            const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
+            console.debug('[inject:updateUIState]', {
+                remotePending: currentUserState.injectPending || null,
+                localPending: stateMgr.localUiState.injectPendingPreview || null,
+                effectivePending: pending,
+                cancelledMap: stateMgr.localUiState.cancelledInjectRequestIds || {}
+            });
             const isWaiting = pending && pending.status === "WAITING_SLOT";
 
             if (isWaiting) {

@@ -497,14 +497,20 @@
             const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
             const myActivePick = currentUserState.activePick || {};
             const isUserPickingAnywhere = Object.values(myActivePick).some(p => p.pendingQty > 0);
-            const localPending = stateMgr.localUiState.injectPendingPreview;
-            const firestorePending = currentUserState.injectPending;
-            const isInjectWaitingUi = state.mode === 'INJECT' && (
-                firestorePending?.status === 'WAITING_SLOT' ||
-                localPending?.status === 'WAITING_SLOT'
-            );
-            const isInjectReady = state.mode === 'INJECT' &&
-                firestorePending?.status === 'WAITING_SLOT' &&
+            const effectivePending = stateMgr.getEffectiveInjectPendingForCurrentUser(state);
+            const firestorePending = currentUserState.injectPending || null;
+            const firestorePendingRequestId = firestorePending?.requestId || null;
+            const firestorePendingCancelledLocally = stateMgr.isInjectRequestCancelled(firestorePendingRequestId);
+
+            const isInjectWaitingUi =
+                state.mode === 'INJECT' &&
+                effectivePending?.status === 'WAITING_SLOT';
+
+            const isInjectReady =
+                state.mode === 'INJECT' &&
+                firestorePending &&
+                !firestorePendingCancelledLocally &&
+                firestorePending.status === 'WAITING_SLOT' &&
                 isConfigured;
             const isInjectSyncing = isInjectWaitingUi && !isInjectReady;
 
@@ -847,12 +853,16 @@
             const banner = document.getElementById('instructionBanner');
             if (!banner) return;
 
+            const inject = stateMgr.getEffectiveInjectPendingForCurrentUser(state);
             const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
             const firestorePending = currentUserState.injectPending;
-            const localPending = stateMgr.localUiState.injectPendingPreview;
-            const inject = firestorePending || localPending;
+            const firestorePendingRequestId = firestorePending?.requestId || null;
+            const firestorePendingCancelledLocally = stateMgr.isInjectRequestCancelled(firestorePendingRequestId);
             const isWaitingUi = inject && inject.status === 'WAITING_SLOT';
-            const isReady = firestorePending && firestorePending.status === 'WAITING_SLOT';
+            const isReady =
+                firestorePending &&
+                !firestorePendingCancelledLocally &&
+                firestorePending.status === 'WAITING_SLOT';
 
             if (isWaitingUi) {
                 const uIdx = stateMgr.currentUserId.slice(-1);

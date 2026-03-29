@@ -78,6 +78,27 @@ StateManager.prototype.isInjectRequestCancelled = function (requestId) {
     return !!(this.localUiState.cancelledInjectRequestIds && this.localUiState.cancelledInjectRequestIds[requestId]);
 };
 
+StateManager.prototype.getEffectiveInjectPendingForCurrentUser = function (state) {
+    const targetState = state || this.state || {};
+    const currentUserState = targetState.userStates?.[this.currentUserId] || {};
+
+    const remotePending = currentUserState.injectPending || null;
+    const localPending = this.localUiState.injectPendingPreview || null;
+
+    const remoteRequestId = remotePending?.requestId || null;
+    const remoteCancelledLocally = this.isInjectRequestCancelled(remoteRequestId);
+
+    if (remotePending && !remoteCancelledLocally) {
+        return remotePending;
+    }
+
+    return localPending || null;
+};
+
+StateManager.prototype.hasEffectiveInjectPendingForCurrentUser = function (state) {
+    return !!this.getEffectiveInjectPendingForCurrentUser(state);
+};
+
 StateManager.prototype.cancelInjectPending = function () {
     if (!this.user) return Promise.reject("Not authenticated");
 
