@@ -7,9 +7,22 @@
         const loadCsvBtn = document.getElementById('loadCsvBtn');
         const instPanel = document.getElementById('instructionPanel');
         const sessionDisplay = document.getElementById('sessionDisplay');
+        let hasRequestedInjectModeSync = false;
 
         const stateMgr = new StateManager(
             (state) => {
+                if (!state) return;
+
+                if (state.mode === 'INJECT') {
+                    hasRequestedInjectModeSync = true;
+                } else if (stateMgr.user && !hasRequestedInjectModeSync) {
+                    hasRequestedInjectModeSync = true;
+                    stateMgr.update({ mode: 'INJECT' }).catch((e) => {
+                        console.error('inject mode への切り替えに失敗しました:', e);
+                        hasRequestedInjectModeSync = false;
+                    });
+                }
+
                 render(state);
                 updateUIState(state);
                 updateUserSelectorUI();
@@ -58,10 +71,6 @@
                 stateMgr.setCurrentUser(e.target.value);
             });
         }
-
-        stateMgr.update({ mode: 'INJECT' }).catch((e) => {
-            console.error('inject mode への切り替えに失敗しました:', e);
-        });
 
 
         const normalizeJan = (jan) => {
