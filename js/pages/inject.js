@@ -51,8 +51,6 @@
             });
         }
 
-        // Ensure we are in INJECT mode when this page is loaded
-        stateMgr.update({ mode: 'INJECT' });
 
         const normalizeJan = (jan) => {
             if (!jan) return "";
