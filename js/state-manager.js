@@ -83,12 +83,18 @@ StateManager.prototype.getEffectiveInjectPendingForCurrentUser = function (state
     const currentUserState = targetState.userStates?.[this.currentUserId] || {};
 
     const remotePending = currentUserState.injectPending || null;
+    const remoteCancelled = currentUserState.injectPendingCancelled || null;
     const localPending = this.localUiState.injectPendingPreview || null;
 
     const remoteRequestId = remotePending?.requestId || null;
     const remoteCancelledLocally = this.isInjectRequestCancelled(remoteRequestId);
+    const remoteCancelledRemotely =
+        !!remotePending &&
+        !!remoteCancelled &&
+        !!remoteCancelled.requestId &&
+        remoteCancelled.requestId === remoteRequestId;
 
-    if (remotePending && !remoteCancelledLocally) {
+    if (remotePending && !remoteCancelledLocally && !remoteCancelledRemotely) {
         return remotePending;
     }
 
@@ -117,9 +123,19 @@ StateManager.prototype.cancelInjectPending = function () {
 
     this.clearLocalInjectPending();
 
-    return this.update({
+    const updates = {
         [`userStates.${this.currentUserId}.injectPending`]: null
-    });
+    };
+
+    if (requestId) {
+        updates[`userStates.${this.currentUserId}.injectPendingCancelled`] = {
+            requestId,
+            jan: pending?.jan || null,
+            cancelledAt: Date.now()
+        };
+    }
+
+    return this.update(updates);
 };
 
 StateManager.prototype.createInjectRequestId = function () {
@@ -189,8 +205,13 @@ StateManager.prototype._reconcileLocalUiStateWithRemote = function (remoteState)
     const remoteSlots = remoteState?.slots || {};
     const optimisticSlots = this.localUiState.optimisticSlots || {};
     const remoteUserPending = remoteState?.userStates?.[this.currentUserId]?.injectPending;
+    const remoteCancelledInfo = remoteState?.userStates?.[this.currentUserId]?.injectPendingCancelled || null;
     const remotePendingRequestId = remoteUserPending?.requestId || null;
     const remotePendingCancelledLocally = this.isInjectRequestCancelled(remotePendingRequestId);
+    const remotePendingCancelledRemotely =
+        !!remotePendingRequestId &&
+        remoteCancelledInfo?.requestId === remotePendingRequestId;
+    const remotePendingCancelled = remotePendingCancelledLocally || remotePendingCancelledRemotely;
     let changed = false;
 
     Object.keys(optimisticSlots).forEach((slotKey) => {
@@ -201,7 +222,7 @@ StateManager.prototype._reconcileLocalUiStateWithRemote = function (remoteState)
 
         const remoteSkus = remoteSlots[slotKey]?.skus || (remoteSlots[slotKey]?.sku ? [remoteSlots[slotKey].sku] : []);
         const hasRemoteCommit = remoteSkus.includes(jan);
-        const effectiveRemotePending = remotePendingCancelledLocally ? null : remoteUserPending;
+        const effectiveRemotePending = remotePendingCancelled ? null : remoteUserPending;
         const isPendingClearedForThisJan = !effectiveRemotePending || effectiveRemotePending.jan !== jan;
         const remoteConfirmed = hasRemoteCommit && isPendingClearedForThisJan;
 
@@ -219,7 +240,7 @@ StateManager.prototype._reconcileLocalUiStateWithRemote = function (remoteState)
 
     const localPending = this.localUiState.injectPendingPreview;
     if (localPending) {
-        const remotePending = remotePendingCancelledLocally
+        const remotePending = remotePendingCancelled
             ? null
             : (remoteState?.userStates?.[this.currentUserId]?.injectPending || null);
         const localJan = localPending.jan;
@@ -240,13 +261,17 @@ StateManager.prototype._reconcileLocalUiStateWithRemote = function (remoteState)
             changed = true;
         }
 
-        if (remotePendingCancelledLocally && (!localRequestId || localRequestId === remotePendingRequestId)) {
+        if (remotePendingCancelled && (!localRequestId || localRequestId === remotePendingRequestId)) {
             this.localUiState.injectPendingPreview = null;
             changed = true;
         }
-    } else if (remotePendingCancelledLocally) {
+    } else if (remotePendingCancelled) {
         changed = true;
     }
+
+    // NOTE:
+    // Remote injectPendingCancelled cleanup (nulling stale values in Firestore) is intentionally
+    // deferred to keep this patch minimal and avoid extra write chatter from reconcile loops.
 
     const cancelledMap = this.localUiState.cancelledInjectRequestIds || {};
     Object.keys(cancelledMap).forEach((reqId) => {

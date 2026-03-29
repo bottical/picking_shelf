@@ -605,7 +605,7 @@
                     if (skus.length === 1) {
                         const jan = skus[0];
                         const totalQty = state.injectList?.[jan] || 0;
-                        const label = jan;
+                        const label = `...${String(jan).slice(-4)}`;
                         renderStackedBlock(block, label, `${totalQty}`);
                     } else {
                         const totalQty = skus.reduce((sum, jan) => sum + (state.injectList?.[jan] || 0), 0);
