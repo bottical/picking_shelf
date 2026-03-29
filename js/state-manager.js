@@ -754,6 +754,43 @@ StateManager.prototype.logout = function () {
     return this.auth.signOut();
 };
 
+StateManager.prototype._rebuildActivePickForUser = function (userId, data, nextSlots) {
+    const userState = data.userStates?.[userId];
+    const listId = userState?.currentPickingNo;
+    if (!listId) return {};
+
+    const lines = data.pickLists?.[listId] || [];
+    const activePick = {};
+
+    lines.forEach((line) => {
+        if (line.status === 'DONE') return;
+
+        const entry = Object.entries(nextSlots || {}).find(([, value]) => {
+            const skus = value?.skus || (value?.sku ? [value.sku] : []);
+            return skus.includes(line.jan);
+        });
+
+        const slotKey = entry ? entry[0] : 'UNALLOCATED';
+        if (!activePick[slotKey]) {
+            activePick[slotKey] = {
+                totalQty: 0,
+                pendingQty: 0,
+                skus: [],
+                pickNo: listId
+            };
+        }
+
+        activePick[slotKey].totalQty += line.qty;
+        activePick[slotKey].pendingQty += line.qty;
+
+        if (!activePick[slotKey].skus.includes(line.jan)) {
+            activePick[slotKey].skus.push(line.jan);
+        }
+    });
+
+    return activePick;
+};
+
 StateManager.prototype.selectSlot = function (bayId, subId) {
     const currentUserState = this.state?.userStates?.[this.currentUserId];
     const pendingFromFirestore = currentUserState?.injectPending;
@@ -793,7 +830,8 @@ StateManager.prototype.selectSlot = function (bayId, subId) {
                 }
 
                 const slots = data.slots || {};
-                const currentSlot = slots[slotKey] || {};
+                const nextSlots = { ...slots };
+                const currentSlot = nextSlots[slotKey] || {};
 
                 let skus = currentSlot.skus || (currentSlot.sku ? [currentSlot.sku] : []);
 
@@ -801,10 +839,12 @@ StateManager.prototype.selectSlot = function (bayId, subId) {
                     skus.push(pendingJan);
                 }
 
-                slots[slotKey] = { skus: skus };
+                nextSlots[slotKey] = { skus: skus };
+                const rebuiltActivePick = this._rebuildActivePickForUser(this.currentUserId, data, nextSlots);
 
                 transaction.update(docRef, {
-                    slots: slots,
+                    slots: nextSlots,
+                    [`userStates.${this.currentUserId}.activePick`]: rebuiltActivePick,
                     [`userStates.${this.currentUserId}.injectPending`]: null,
                     [`userStates.${this.currentUserId}.injectPendingCancelled`]: null,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -866,7 +906,12 @@ StateManager.prototype.unassignSlot = function (slotKey, targetJan) {
                 newSlots[slotKey] = { skus: skus };
             }
             
-            transaction.update(docRef, { slots: newSlots, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+            const rebuiltActivePick = this._rebuildActivePickForUser(this.currentUserId, data, newSlots);
+            transaction.update(docRef, {
+                slots: newSlots,
+                [`userStates.${this.currentUserId}.activePick`]: rebuiltActivePick,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
         }
     }).catch((error) => {
         this._logFirestoreError('unassignSlot', error, uid);
@@ -897,7 +942,11 @@ StateManager.prototype.resetBay = function (bayId) {
                     changed = true;
                 }
             });
-            if (changed) updates.slots = newSlots;
+            if (changed) {
+                updates.slots = newSlots;
+                updates[`userStates.${this.currentUserId}.activePick`] =
+                    this._rebuildActivePickForUser(this.currentUserId, data, newSlots);
+            }
         }
         
         transaction.update(docRef, updates);
