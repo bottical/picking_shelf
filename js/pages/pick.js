@@ -6,7 +6,8 @@
         const currentListTitle = document.getElementById('currentListTitle');
         const sessionDisplay = document.getElementById('sessionDisplay');
 
-        let currentListId = null;
+        let lastRenderedPickingNo = null;
+        let lastRenderedAllCompleted = false;
 
         const stateMgr = new StateManager(
             (state) => render(state),
@@ -80,6 +81,8 @@
 
             pickTable.innerHTML = '';
             if (!currentPickingNo || !state.pickLists?.[currentPickingNo]) {
+                lastRenderedPickingNo = currentPickingNo || null;
+                lastRenderedAllCompleted = false;
                 const msg = !currentPickingNo ? "ピッキングNo.を入力してください" : "データが見つかりません";
                 pickTable.innerHTML = `<tr><td colspan="5" style="padding:3rem; text-align:center; color:var(--text-muted);">${msg}</td></tr>`;
                 currentListTitle.textContent = `ピッキングNo.を入力してください`;
@@ -88,11 +91,20 @@
 
             const lines = state.pickLists[currentPickingNo];
             const allCompleted = lines.length > 0 && lines.every(l => l.status === 'DONE');
+            if (
+                lastRenderedPickingNo === currentPickingNo &&
+                lastRenderedAllCompleted === false &&
+                allCompleted === true
+            ) {
+                AudioManager.playCompleteSound();
+            }
             if (allCompleted) {
                 currentListTitle.innerHTML = `<span style="color: red;">完了済み：${currentPickingNo}</span>`;
             } else {
                 currentListTitle.innerHTML = `<span class="user-text-${stateMgr.currentUserId.slice(-1)}">【ユーザー${stateMgr.currentUserId.slice(-1)}】</span> ピッキング中: ${currentPickingNo}`;
             }
+            lastRenderedPickingNo = currentPickingNo;
+            lastRenderedAllCompleted = allCompleted;
             lines.forEach((line, idx) => {
                 const entry = Object.entries(state.slots || {}).find(([k, v]) => {
                     const skus = v.skus || (v.sku ? [v.sku] : []);
@@ -153,7 +165,6 @@
             const allDone = lines.every(l => l.status === 'DONE');
 
             if (allDone) {
-                AudioManager.playCompleteSound();
                 updates[`userStates.${stateMgr.currentUserId}.activePick`] = {};
             } else {
                 const newActivePick = {};
@@ -180,39 +191,10 @@
             stateMgr.update(updates);
         };
 
-        const createSampleList = () => {
-            const filledSlots = Object.values(stateMgr.state.slots || {});
-            const allSkus = [];
-            filledSlots.forEach(slot => {
-                const skus = slot.skus || (slot.sku ? [slot.sku] : []);
-                allSkus.push(...skus);
-            });
-            if (allSkus.length === 0) return alert("商品が投入されていません！");
-
-            const id = "LIST-" + Math.floor(Math.random() * 1000);
-            const lines = [];
-            for (let i = 0; i < 3; i++) {
-                const sku = allSkus[Math.floor(Math.random() * allSkus.length)];
-                lines.push({ jan: sku, qty: Math.floor(Math.random() * 5) + 1, status: 'PENDING' });
-            }
-
-            stateMgr.update({ [`pickLists.${id}`]: lines });
-            alert(`リスト ${id} 作成完了`);
-            loadList(id);
-        };
-
-        const forcePickMode = () => {
-            stateMgr.update({ mode: 'PICK' });
-            alert("モードを PICK に変更しました");
-        };
-
         // UI Event Listeners
         listIdInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') loadList(listIdInput.value.trim());
         });
-
-        document.getElementById('createSampleBtn').onclick = createSampleList;
-        document.getElementById('forcePickBtn').onclick = forcePickMode;
 
         document.getElementById('resetPickingBtn').onclick = () => {
             const currentUserState = stateMgr.state.userStates?.[stateMgr.currentUserId];

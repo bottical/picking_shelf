@@ -88,24 +88,19 @@
 
             <div id="instructionPanel" class="card hidden"
                 style="background: #eff6ff; border-color: var(--primary); text-align: center; padding: 1.5rem; margin-top: 1rem;">
-                <div style="color:var(--primary); font-weight:800; font-size: 1.1rem; margin-bottom: 1rem;">
-                    <span>📱 スマホ側の間口で空き枠をタップ！</span>
-                </div>
-                
-                <!-- 新しいダッシュボード要素 -->
-                <div style="background: white; border-radius: 0.5rem; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); border: 1px solid #e2e8f0;">
-                    <div style="font-size: 0.9rem; color: var(--text-muted); font-weight: 800;">対象商品 (JAN)</div>
-                    <div id="dashJan" style="font-size: 1.5rem; font-weight: 800; margin: 0.5rem 0; font-family: monospace; color: var(--text);">---</div>
-                    <hr style="border:0; border-top:2px dashed #e2e8f0; margin: 1.5rem 0;">
-                    <div style="font-size: 0.9rem; color: var(--text-muted); font-weight: 800;">投入必要数</div>
-                    <div style="display: flex; justify-content: center; align-items: baseline; gap: 0.5rem; color: var(--primary); margin-top: 0.5rem;">
-                        <span id="dashQty" style="font-size: 4rem; font-weight: 900; line-height: 1; letter-spacing: -2px;">0</span>
-                        <span style="font-size: 1.2rem; font-weight: 800;">個</span>
+                <p style="color:var(--primary); font-weight:800; font-size: 1.05rem; margin: 0 0 1rem;">
+                    📱 空き枠をタップしてください
+                </p>
+                <div style="background: white; border-radius: 0.5rem; padding: 1rem 1.25rem; margin-bottom: 1rem; border: 1px solid #e2e8f0;">
+                    <div style="font-size: 0.85rem; color: var(--text-muted); font-weight: 800;">JAN</div>
+                    <div id="dashJan" style="font-size: 1.4rem; font-weight: 800; margin: 0.35rem 0 0.75rem; font-family: monospace; color: var(--text);">---</div>
+                    <div style="font-size: 0.85rem; color: var(--text-muted); font-weight: 800;">必要数</div>
+                    <div style="margin-top: 0.35rem; color: var(--primary);">
+                        <span id="dashQty" style="font-size: 2.2rem; font-weight: 900; line-height: 1;">0</span>
+                        <span style="font-size: 1rem; font-weight: 800;">個</span>
                     </div>
                 </div>
-
-                <!-- キャンセルボタン -->
-                <button id="cancelInjectBtn" class="btn btn-outline" style="width: 100%; border-color: #fca5a5; color: var(--danger); background: #fef2f2; padding: 1rem; font-size: 1.1rem; font-weight: 800; border-radius: 0.5rem;">
+                <button id="cancelInjectBtn" class="btn btn-outline" style="width: 100%; border-color: #fca5a5; color: var(--danger); background: #fef2f2; padding: 0.9rem; font-size: 1rem; font-weight: 800; border-radius: 0.5rem;">
                     ✖️ スキャンを取り消す
                 </button>
             </div>
