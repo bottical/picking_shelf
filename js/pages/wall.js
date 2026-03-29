@@ -508,6 +508,8 @@
 
             const isInjectReady =
                 state.mode === 'INJECT' &&
+                effectivePending &&
+                effectivePending.status === 'WAITING_SLOT' &&
                 firestorePending &&
                 !firestorePendingCancelledLocally &&
                 firestorePending.status === 'WAITING_SLOT' &&
@@ -601,8 +603,9 @@
                         else showSlotSkusModal(b, s, skus, stateMgr);
                     };
                     if (skus.length === 1) {
-                        const totalQty = state.injectList?.[skus[0]] || 0;
-                        const label = denseEnabled && splitCount >= 6 ? '1SKU' : '1 SKU';
+                        const jan = skus[0];
+                        const totalQty = state.injectList?.[jan] || 0;
+                        const label = jan;
                         renderStackedBlock(block, label, `${totalQty}`);
                     } else {
                         const totalQty = skus.reduce((sum, jan) => sum + (state.injectList?.[jan] || 0), 0);
@@ -860,9 +863,11 @@
             const firestorePendingCancelledLocally = stateMgr.isInjectRequestCancelled(firestorePendingRequestId);
             const isWaitingUi = inject && inject.status === 'WAITING_SLOT';
             const isReady =
+                inject &&
                 firestorePending &&
                 !firestorePendingCancelledLocally &&
-                firestorePending.status === 'WAITING_SLOT';
+                firestorePending.status === 'WAITING_SLOT' &&
+                inject.status === 'WAITING_SLOT';
 
             if (isWaitingUi) {
                 const uIdx = stateMgr.currentUserId.slice(-1);
