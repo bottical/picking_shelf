@@ -531,7 +531,6 @@
                     stateMgr.setLocalInjectPending(pending);
                     scanInput.disabled = true;
                     scanInput.parentElement.style.opacity = '0.5';
-                    showMessage(`✅ SKU ${jan} を受け付けました。投入先の枠をタップしてください。`, 'info');
                     try {
                         const saveResult = await stateMgr.saveInjectPendingSafely(pending);
                         if (saveResult?.skipped) {
