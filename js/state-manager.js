@@ -31,6 +31,7 @@ function StateManager(onStateChange, onUserChange) {
     this.currentUserId = localStorage.getItem('picking_shelf_user_id') || 'user1';
     this.localUiState = {
         injectPendingPreview: null,
+        cancelledInjectRequestIds: {},
         optimisticSlots: {},
         lastOpSeq: 0
     };
@@ -70,6 +71,32 @@ StateManager.prototype.setLocalInjectPending = function (jan) {
 StateManager.prototype.clearLocalInjectPending = function () {
     this.localUiState.injectPendingPreview = null;
     this._notifyUiOnlyChange();
+};
+
+StateManager.prototype.cancelInjectPending = function () {
+    if (!this.user) return Promise.reject("Not authenticated");
+
+    const currentUserState = this.state?.userStates?.[this.currentUserId] || {};
+    const pending = currentUserState.injectPending || this.localUiState.injectPendingPreview;
+
+    if (!pending) {
+        this.clearLocalInjectPending();
+        return Promise.resolve();
+    }
+
+    const requestId = pending.requestId || null;
+    if (requestId) {
+        this.localUiState.cancelledInjectRequestIds[requestId] = {
+            jan: pending.jan || null,
+            cancelledAt: Date.now()
+        };
+    }
+
+    this.clearLocalInjectPending();
+
+    return this.update({
+        [`userStates.${this.currentUserId}.injectPending`]: null
+    });
 };
 
 StateManager.prototype.createInjectRequestId = function () {
@@ -185,6 +212,24 @@ StateManager.prototype._reconcileLocalUiStateWithRemote = function (remoteState)
             changed = true;
         }
     }
+
+    const cancelledMap = this.localUiState.cancelledInjectRequestIds || {};
+    Object.keys(cancelledMap).forEach((reqId) => {
+        const info = cancelledMap[reqId] || {};
+        const cancelledAt = info.cancelledAt || 0;
+        const jan = info.jan || null;
+        const remotePendingRequestId = remoteUserPending?.requestId || null;
+        const stillPendingRemotely = remotePendingRequestId === reqId;
+        const janExistsSomewhere = jan && Object.values(remoteSlots).some((slot) => {
+            const skus = slot?.skus || (slot?.sku ? [slot.sku] : []);
+            return skus.includes(jan);
+        });
+        const expired = Date.now() - cancelledAt > 15000;
+        if (expired || !stillPendingRemotely || janExistsSomewhere) {
+            delete cancelledMap[reqId];
+            changed = true;
+        }
+    });
 
     if (changed) {
         this._notifyUiOnlyChange();
@@ -618,12 +663,18 @@ StateManager.prototype.selectSlot = function (bayId, subId) {
         this.markOptimisticSlotCommitted(slotKey, opId);
     }).catch((error) => {
         this.rollbackOptimisticInject(opId);
-        this.setLocalInjectPending({
-            jan: pendingJan,
-            status: 'WAITING_SLOT',
-            requestedAt: pending.requestedAt,
-            requestId: pendingRequestId
-        });
+        const wasCancelled =
+            pendingRequestId &&
+            this.localUiState.cancelledInjectRequestIds &&
+            this.localUiState.cancelledInjectRequestIds[pendingRequestId];
+        if (!wasCancelled) {
+            this.setLocalInjectPending({
+                jan: pendingJan,
+                status: 'WAITING_SLOT',
+                requestedAt: pending.requestedAt,
+                requestId: pendingRequestId
+            });
+        }
         this._logFirestoreError('selectSlot', error, uid);
         throw error;
     });

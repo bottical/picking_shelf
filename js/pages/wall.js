@@ -864,11 +864,12 @@
                     </div>
                 `;
                 banner.classList.remove('hidden');
-                document.getElementById('bannerCancelBtn').onclick = () => {
-                    stateMgr.update({
-                        [`userStates.${stateMgr.currentUserId}.injectPending`]: null
-                    });
-                    stateMgr.clearLocalInjectPending();
+                document.getElementById('bannerCancelBtn').onclick = async () => {
+                    try {
+                        await stateMgr.cancelInjectPending();
+                    } catch (e) {
+                        console.error('banner cancel failed', e);
+                    }
                 };
             } else {
                 banner.classList.add('hidden');

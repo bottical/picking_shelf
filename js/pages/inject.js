@@ -25,11 +25,19 @@
 
         const cancelInjectBtn = document.getElementById('cancelInjectBtn');
         if (cancelInjectBtn) {
-            cancelInjectBtn.addEventListener('click', () => {
-                stateMgr.update({
-                    [`userStates.${stateMgr.currentUserId}.injectPending`]: null
-                });
-                stateMgr.clearLocalInjectPending();
+            cancelInjectBtn.addEventListener('click', async () => {
+                try {
+                    await stateMgr.cancelInjectPending();
+                    scanInput.disabled = false;
+                    scanInput.parentElement.style.opacity = '1';
+                    scanInput.value = '';
+                    setTimeout(() => scanInput.focus(), 50);
+                    scanMsg.classList.add('hidden');
+                } catch (e) {
+                    console.error('投入キャンセルに失敗しました:', e);
+                    AudioManager.playErrorSound();
+                    showMessage('❌ キャンセルに失敗しました。通信状態をご確認ください。', 'error');
+                }
             });
         }
 
@@ -50,6 +58,10 @@
                 stateMgr.setCurrentUser(e.target.value);
             });
         }
+
+        stateMgr.update({ mode: 'INJECT' }).catch((e) => {
+            console.error('inject mode への切り替えに失敗しました:', e);
+        });
 
 
         const normalizeJan = (jan) => {
@@ -470,60 +482,61 @@
             reader.readAsText(file);
         });
 
-        scanInput.addEventListener('keypress', async (e) => {
-            if (e.key === 'Enter') {
-                if (scanInput.disabled) return;
-                const jan = normalizeJan(scanInput.value);
-                const state = stateMgr.state;
-                const totalQty = state.injectList?.[jan];
+        scanInput.addEventListener('keydown', async (e) => {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            if (scanInput.disabled) return;
+            const jan = normalizeJan(scanInput.value);
+            const state = stateMgr.state;
+            const totalQty = state.injectList?.[jan];
 
-                if (!jan || totalQty === undefined) {
+            if (!jan || totalQty === undefined) {
+                AudioManager.playErrorSound();
+                showMessage(`❌ SKU ${jan} はリストにありません`, 'error');
+            } else {
+                const janToSlot = buildJanToSlotMap(getMergedSlots(state));
+                const alreadyInSlot = !!janToSlot[jan];
+
+                if (alreadyInSlot) {
                     AudioManager.playErrorSound();
-                    showMessage(`❌ SKU ${jan} はリストにありません`, 'error');
+                    showMessage(`⚠️ SKU ${jan} は既に枠に投入済みです`, 'error');
                 } else {
-                    const janToSlot = buildJanToSlotMap(getMergedSlots(state));
-                    const alreadyInSlot = !!janToSlot[jan];
-
-                    if (alreadyInSlot) {
+                    const now = Date.now();
+                    if (lastAcceptedJan === jan && (now - lastAcceptedAt) < 500) {
+                        scanInput.value = '';
+                        return;
+                    }
+                    lastAcceptedJan = jan;
+                    lastAcceptedAt = now;
+                    const requestId = stateMgr.createInjectRequestId();
+                    const pending = {
+                        jan,
+                        status: "WAITING_SLOT",
+                        requestedAt: Date.now(),
+                        requestId
+                    };
+                    AudioManager.playStartSound();
+                    stateMgr.setLocalInjectPending(pending);
+                    scanInput.disabled = true;
+                    scanInput.parentElement.style.opacity = '0.5';
+                    showMessage(`✅ SKU ${jan} を受け付けました。投入先の枠をタップしてください。`, 'info');
+                    try {
+                        await stateMgr.cancelAllPicks({
+                            [`userStates.${stateMgr.currentUserId}.injectPending`]: {
+                                ...pending
+                            }
+                        });
+                    } catch (error) {
+                        console.error('injectPending の保存に失敗しました:', error);
+                        stateMgr.rollbackOptimisticInject();
+                        scanInput.disabled = false;
+                        scanInput.parentElement.style.opacity = '1';
                         AudioManager.playErrorSound();
-                        showMessage(`⚠️ SKU ${jan} は既に枠に投入済みです`, 'error');
-                    } else {
-                        const now = Date.now();
-                        if (lastAcceptedJan === jan && (now - lastAcceptedAt) < 500) {
-                            scanInput.value = '';
-                            return;
-                        }
-                        lastAcceptedJan = jan;
-                        lastAcceptedAt = now;
-                        const requestId = stateMgr.createInjectRequestId();
-                        const pending = {
-                            jan,
-                            status: "WAITING_SLOT",
-                            requestedAt: Date.now(),
-                            requestId
-                        };
-                        stateMgr.setLocalInjectPending(pending);
-                        scanInput.disabled = true;
-                        scanInput.parentElement.style.opacity = '0.5';
-                        showMessage(`✅ SKU ${jan} を受け付けました。投入先の枠をタップしてください。`, 'info');
-                        try {
-                            await stateMgr.cancelAllPicks({
-                                [`userStates.${stateMgr.currentUserId}.injectPending`]: {
-                                    ...pending
-                                }
-                            });
-                        } catch (error) {
-                            console.error('injectPending の保存に失敗しました:', error);
-                            stateMgr.rollbackOptimisticInject();
-                            scanInput.disabled = false;
-                            scanInput.parentElement.style.opacity = '1';
-                            AudioManager.playErrorSound();
-                            showMessage('❌ 通信エラーにより投入待機を保存できませんでした。再度スキャンしてください。', 'error');
-                        }
+                        showMessage('❌ 通信エラーにより投入待機を保存できませんでした。再度スキャンしてください。', 'error');
                     }
                 }
-                scanInput.value = '';
             }
+            scanInput.value = '';
         });
 
         document.querySelectorAll('.nav-link').forEach(link => {
