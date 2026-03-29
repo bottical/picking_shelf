@@ -628,10 +628,6 @@ StateManager.prototype.saveInjectPendingSafely = function (pending) {
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         };
 
-        Object.keys(userStates).forEach((uId) => {
-            this._applyResetLogic(uId, data, updates);
-        });
-
         if (this.isInjectRequestCancelled(requestId)) {
             return { skipped: true, reason: 'cancelled-before-update' };
         }
