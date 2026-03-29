@@ -107,37 +107,59 @@ StateManager.prototype.hasEffectiveInjectPendingForCurrentUser = function (state
 
 StateManager.prototype.cancelInjectPending = function () {
     if (!this.user) return Promise.reject("Not authenticated");
+    const uid = this.user.uid;
+    const docRef = this._getStateDocRef(uid);
+    const currentUserId = this.currentUserId;
+    const localPending = this.localUiState.injectPendingPreview || null;
 
-    const currentUserState = this.state?.userStates?.[this.currentUserId] || {};
-    const pendingFromRemote = currentUserState.injectPending || null;
-    const pendingFromLocal = this.localUiState.injectPendingPreview || null;
-    const pending = pendingFromRemote || pendingFromLocal;
+    return this.db.runTransaction(async (transaction) => {
+        const doc = await transaction.get(docRef);
+        const data = doc.exists ? (doc.data() || {}) : {};
+        const currentUserState = data.userStates?.[currentUserId] || {};
+        const remotePending = currentUserState.injectPending || null;
+        const remoteCancelled = currentUserState.injectPendingCancelled || null;
+        const pending = remotePending || localPending;
+        const requestId = pending?.requestId || null;
+        const cancelledAt = Date.now();
 
-    const requestId = pending?.requestId || null;
-    if (requestId) {
-        this.localUiState.cancelledInjectRequestIds[requestId] = {
-            jan: pending?.jan || null,
-            cancelledAt: Date.now()
+        console.debug('[inject-cancel] transaction compare-and-set', {
+            currentUserId,
+            requestId,
+            remotePendingRequestId: remotePending?.requestId || null,
+            remoteCancelledRequestId: remoteCancelled?.requestId || null
+        });
+
+        const updates = {
+            [`userStates.${currentUserId}.injectPending`]: null
         };
-    }
 
-    this.clearLocalInjectPending();
+        if (!pending) {
+            updates[`userStates.${currentUserId}.injectPendingCancelled`] = null;
+            transaction.update(docRef, updates);
+            return { requestId: null, jan: null, cancelledAt: null };
+        }
 
-    const updates = {
-        [`userStates.${this.currentUserId}.injectPending`]: null
-    };
-
-    if (requestId) {
-        updates[`userStates.${this.currentUserId}.injectPendingCancelled`] = {
+        updates[`userStates.${currentUserId}.injectPendingCancelled`] = {
             requestId,
             jan: pending?.jan || null,
-            cancelledAt: Date.now()
+            cancelledAt
         };
-    } else {
-        updates[`userStates.${this.currentUserId}.injectPendingCancelled`] = null;
-    }
-
-    return this.update(updates);
+        transaction.update(docRef, updates);
+        return { requestId, jan: pending?.jan || null, cancelledAt };
+    }).then((result) => {
+        const requestId = result?.requestId || null;
+        if (requestId) {
+            this.localUiState.cancelledInjectRequestIds[requestId] = {
+                jan: result?.jan || null,
+                cancelledAt: result?.cancelledAt || Date.now()
+            };
+        }
+        this.clearLocalInjectPending();
+        return result;
+    }).catch((error) => {
+        this._logFirestoreError('cancelInjectPending', error, uid);
+        throw error;
+    });
 };
 
 StateManager.prototype.createInjectRequestId = function () {
