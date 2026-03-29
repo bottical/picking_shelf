@@ -501,20 +501,32 @@
             const firestorePending = currentUserState.injectPending || null;
             const firestorePendingRequestId = firestorePending?.requestId || null;
             const firestorePendingCancelledLocally = stateMgr.isInjectRequestCancelled(firestorePendingRequestId);
+            const remoteCancelled = currentUserState.injectPendingCancelled || null;
+            const remoteCancelledMatches =
+                !!firestorePending &&
+                !!remoteCancelled &&
+                !!remoteCancelled.requestId &&
+                remoteCancelled.requestId === firestorePending.requestId;
+            const pendingSuppressed = firestorePendingCancelledLocally || remoteCancelledMatches;
 
             const isInjectWaitingUi =
                 state.mode === 'INJECT' &&
+                !pendingSuppressed &&
                 effectivePending?.status === 'WAITING_SLOT';
 
             const isInjectReady =
                 state.mode === 'INJECT' &&
+                !pendingSuppressed &&
                 effectivePending &&
                 effectivePending.status === 'WAITING_SLOT' &&
                 firestorePending &&
-                !firestorePendingCancelledLocally &&
                 firestorePending.status === 'WAITING_SLOT' &&
                 isConfigured;
-            const isInjectSyncing = isInjectWaitingUi && !isInjectReady;
+            const isInjectSyncing =
+                state.mode === 'INJECT' &&
+                !pendingSuppressed &&
+                isInjectWaitingUi &&
+                !isInjectReady;
 
             const screen = document.createElement('div');
             screen.className = 'mobile-screen';
@@ -861,11 +873,21 @@
             const firestorePending = currentUserState.injectPending;
             const firestorePendingRequestId = firestorePending?.requestId || null;
             const firestorePendingCancelledLocally = stateMgr.isInjectRequestCancelled(firestorePendingRequestId);
-            const isWaitingUi = inject && inject.status === 'WAITING_SLOT';
+            const remoteCancelled = currentUserState.injectPendingCancelled || null;
+            const remoteCancelledMatches =
+                !!firestorePending &&
+                !!remoteCancelled &&
+                !!remoteCancelled.requestId &&
+                remoteCancelled.requestId === firestorePending.requestId;
+            const pendingSuppressed = firestorePendingCancelledLocally || remoteCancelledMatches;
+            const isWaitingUi =
+                !pendingSuppressed &&
+                inject &&
+                inject.status === 'WAITING_SLOT';
             const isReady =
+                !pendingSuppressed &&
                 inject &&
                 firestorePending &&
-                !firestorePendingCancelledLocally &&
                 firestorePending.status === 'WAITING_SLOT' &&
                 inject.status === 'WAITING_SLOT';
 

@@ -133,6 +133,8 @@ StateManager.prototype.cancelInjectPending = function () {
             jan: pending?.jan || null,
             cancelledAt: Date.now()
         };
+    } else {
+        updates[`userStates.${this.currentUserId}.injectPendingCancelled`] = null;
     }
 
     return this.update(updates);
@@ -598,6 +600,7 @@ StateManager.prototype.saveInjectPendingSafely = function (pending) {
         }
 
         updates[`userStates.${this.currentUserId}.injectPending`] = { ...pending };
+        updates[`userStates.${this.currentUserId}.injectPendingCancelled`] = null;
         transaction.update(docRef, updates);
         return { skipped: false };
     }).catch((error) => {
@@ -766,6 +769,7 @@ StateManager.prototype.selectSlot = function (bayId, subId) {
                 transaction.update(docRef, {
                     slots: slots,
                     [`userStates.${this.currentUserId}.injectPending`]: null,
+                    [`userStates.${this.currentUserId}.injectPendingCancelled`]: null,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
             });
