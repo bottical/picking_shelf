@@ -4,7 +4,6 @@
         const bayGrid = document.getElementById('bayGrid');
         const scanInput = document.getElementById('scanInput');
         const scanMsg = document.getElementById('scanMsg');
-        const csvInput = document.getElementById('csvInput');
         const loadCsvBtn = document.getElementById('loadCsvBtn');
         const instPanel = document.getElementById('instructionPanel');
         const sessionDisplay = document.getElementById('sessionDisplay');
@@ -92,56 +91,6 @@
             return result.map(v => v.trim());
         }
 
-        let lastIsWaiting = false;
-        const getEffectiveInjectPending = (state) => {
-            const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
-            return currentUserState.injectPending || stateMgr.localUiState.injectPendingPreview;
-        };
-
-        const updateUIState = (state) => {
-            const pending = getEffectiveInjectPending(state);
-            const isWaiting = pending && pending.status === "WAITING_SLOT";
-
-            if (isWaiting) {
-                instPanel.classList.remove('hidden');
-                scanInput.disabled = true;
-                scanInput.value = pending.jan;
-                // スマホ用に入力欄のエリアを少しグレーダウンしてフォーカス外れを表現
-                scanInput.parentElement.style.opacity = '0.5';
-                
-                const totalQty = state.injectList?.[pending.jan] || 0;
-                
-                // ダッシュボードへのデータ注入
-                document.getElementById('dashJan').textContent = pending.jan;
-                document.getElementById('dashQty').textContent = totalQty;
-                
-                // ユーザー表示の更新
-                const dashUser = document.getElementById('dashUser');
-                if (dashUser) {
-                    dashUser.textContent = `ユーザー${stateMgr.currentUserId.slice(-1)}`;
-                    dashUser.className = `user-text-${stateMgr.currentUserId.slice(-1)}`;
-                }
-                
-                // 既存のメッセージアラートは非表示にする
-                scanMsg.classList.add('hidden');
-            } else {
-                // 完了した瞬間を検知
-                if (lastIsWaiting) {
-                    AudioManager.playStartSound();
-                    scanInput.value = '';
-                    setTimeout(() => scanInput.focus(), 100);
-                }
-                
-                instPanel.classList.add('hidden');
-                scanInput.disabled = false;
-                scanInput.parentElement.style.opacity = '1';
-                if (scanMsg.classList.contains('info')) {
-                    scanMsg.classList.add('hidden');
-                }
-            }
-            lastIsWaiting = isWaiting;
-        };
-
         const buildJanToSlotMap = (slots) => {
             const janToSlot = {};
             Object.entries(slots || {}).forEach(([slotKey, slot]) => {
@@ -161,6 +110,64 @@
                 baseSlots[slotKey] = { skus: [...(optimisticSlot.skus || [])] };
             });
             return baseSlots;
+        };
+
+        const isJanAssignedSomewhere = (state, jan) => {
+            if (!jan) return false;
+            const mergedSlots = getMergedSlots(state);
+            return Object.values(mergedSlots).some((slot) => {
+                const skus = slot?.skus || (slot?.sku ? [slot.sku] : []);
+                return skus.includes(jan);
+            });
+        };
+
+        let lastIsWaiting = false;
+        let lastWaitingJan = null;
+        let lastWaitingJanWasAssigned = false;
+        const getEffectiveInjectPending = (state) => {
+            const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
+            return currentUserState.injectPending || stateMgr.localUiState.injectPendingPreview;
+        };
+
+        const updateUIState = (state) => {
+            const pending = getEffectiveInjectPending(state);
+            const isWaiting = pending && pending.status === "WAITING_SLOT";
+
+            if (isWaiting) {
+                lastWaitingJan = pending.jan || null;
+                lastWaitingJanWasAssigned = isJanAssignedSomewhere(state, pending.jan);
+                instPanel.classList.remove('hidden');
+                scanInput.disabled = true;
+                scanInput.value = pending.jan;
+                scanInput.parentElement.style.opacity = '0.5';
+
+                const totalQty = state.injectList?.[pending.jan] || 0;
+                document.getElementById('dashJan').textContent = pending.jan;
+                document.getElementById('dashQty').textContent = totalQty;
+                scanMsg.classList.add('hidden');
+            } else {
+                if (lastIsWaiting) {
+                    const assignedNow = isJanAssignedSomewhere(state, lastWaitingJan);
+                    const success = !lastWaitingJanWasAssigned && assignedNow;
+                    if (success) {
+                        AudioManager.playStartSound();
+                    }
+                    scanInput.value = '';
+                    setTimeout(() => scanInput.focus(), 100);
+                }
+
+                instPanel.classList.add('hidden');
+                scanInput.disabled = false;
+                scanInput.parentElement.style.opacity = '1';
+                if (scanMsg.classList.contains('info')) {
+                    scanMsg.classList.add('hidden');
+                }
+            }
+            lastIsWaiting = isWaiting;
+            if (!isWaiting) {
+                lastWaitingJan = null;
+                lastWaitingJanWasAssigned = false;
+            }
         };
 
         const showSlotSkusModal = (b, s, skus, stateMgr) => {
@@ -488,7 +495,6 @@
                             scanInput.value = '';
                             return;
                         }
-                        AudioManager.playStartSound();
                         lastAcceptedJan = jan;
                         lastAcceptedAt = now;
                         const requestId = stateMgr.createInjectRequestId();

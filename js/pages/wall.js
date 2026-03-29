@@ -430,7 +430,6 @@
 
                 const allDone = lines.every(l => l.status === 'DONE');
                 if (allDone) {
-                    AudioManager.playCompleteSound();
                     updates[`userStates.${stateMgr.currentUserId}.activePick`] = {};
                 } else {
                     const newActivePick = {};
@@ -691,6 +690,7 @@
         const renderBay10 = (state) => {
             const injectList = state.injectList || {};
             const slots = getMergedSlots(state);
+            const nextBayNo = (state.config?.bays || 9) + 1;
             const allocatedSkus = new Set();
             Object.values(slots).forEach(slot => {
                 const skus = slot.skus || (slot.sku ? [slot.sku] : []);
