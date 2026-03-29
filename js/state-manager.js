@@ -191,10 +191,31 @@ StateManager.prototype._reconcileLocalUiStateWithRemote = function (remoteState)
     }
 };
 
+StateManager.prototype._getStateDocRef = function (uid) {
+    const resolvedUid = uid || this.user?.uid;
+    return this.db.collection("users").doc(resolvedUid).collection("states").doc("current");
+};
+
+StateManager.prototype._getStateDocPath = function (uid) {
+    const resolvedUid = uid || this.user?.uid || 'unknown';
+    return `users/${resolvedUid}/states/current`;
+};
+
+StateManager.prototype._logFirestoreError = function (action, error, uid) {
+    console.error(`[firestore:${action}] failed`, {
+        uid: uid || this.user?.uid,
+        currentUserId: this.currentUserId,
+        path: this._getStateDocPath(uid),
+        code: error?.code,
+        message: error?.message,
+        error
+    });
+};
+
 StateManager.prototype.subscribeToState = function (uid) {
     if (this.unsubscribeState) this.unsubscribeState();
 
-    const docRef = this.db.collection("users").doc(uid).collection("states").doc("current");
+    const docRef = this._getStateDocRef(uid);
 
     this.unsubscribeState = docRef.onSnapshot((doc) => {
         if (doc.exists) {
@@ -211,7 +232,7 @@ StateManager.prototype.subscribeToState = function (uid) {
             this.initializeNewSession(uid);
         }
     }, (error) => {
-        console.error("Firestore Error:", error);
+        this._logFirestoreError('subscribeToState', error, uid);
     });
 };
 
@@ -236,7 +257,10 @@ StateManager.prototype.migrateToMultiUser = function (uid, oldData) {
     updates.currentPickingNo = firebase.firestore.FieldValue.delete();
     updates.injectPending = firebase.firestore.FieldValue.delete();
 
-    return this.db.collection("users").doc(uid).collection("states").doc("current").update(updates);
+    return this._getStateDocRef(uid).update(updates).catch((error) => {
+        this._logFirestoreError('migrateToMultiUser', error, uid);
+        throw error;
+    });
 };
 
 StateManager.prototype.initializeNewSession = function (uid) {
@@ -278,14 +302,23 @@ StateManager.prototype.initializeNewSession = function (uid) {
         },
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
-    return this.db.collection("users").doc(uid).collection("states").doc("current").set(initialState);
+    return this._getStateDocRef(uid).set(initialState).catch((error) => {
+        this._logFirestoreError('initializeNewSession', error, uid);
+        throw error;
+    });
 };
 
 StateManager.prototype.update = function (updates) {
     if (!this.user) return Promise.reject("Not authenticated");
-    const docRef = this.db.collection("users").doc(this.user.uid).collection("states").doc("current");
-    updates.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
-    return docRef.update(updates);
+    const uid = this.user.uid;
+    const docRef = this._getStateDocRef(uid);
+    return docRef.set({
+        ...updates,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true }).catch((error) => {
+        this._logFirestoreError('update', error, uid);
+        throw error;
+    });
 };
 
 StateManager.prototype._hasActiveSkuInSlot = function (slotData) {
@@ -297,11 +330,12 @@ StateManager.prototype._hasActiveSkuInSlot = function (slotData) {
 
 StateManager.prototype.applyBulkSplitCount = function (targetSplit) {
     if (!this.user || !this.state) return Promise.reject("Not authenticated");
+    const uid = this.user.uid;
 
     const normalizedTarget = Math.max(1, Math.min(6, parseInt(targetSplit, 10) || 1));
 
     return this.db.runTransaction(async (transaction) => {
-        const docRef = this.db.collection("users").doc(this.user.uid).collection("states").doc("current");
+        const docRef = this._getStateDocRef(uid);
         const doc = await transaction.get(docRef);
         if (!doc.exists) return { changedBays: 0, constrainedBays: 0, targetSplit: normalizedTarget };
 
@@ -343,6 +377,9 @@ StateManager.prototype.applyBulkSplitCount = function (targetSplit) {
 
         transaction.update(docRef, updates);
         return { changedBays, constrainedBays, targetSplit: normalizedTarget };
+    }).catch((error) => {
+        this._logFirestoreError('applyBulkSplitCount', error, uid);
+        throw error;
     });
 };
 
@@ -364,8 +401,9 @@ StateManager.prototype._applyResetLogic = function (userId, data, updates) {
 
 StateManager.prototype.resetUserPick = function (userId) {
     if (!this.user || !this.state) return Promise.reject("Not authenticated");
+    const uid = this.user.uid;
     return this.db.runTransaction(async (transaction) => {
-        const docRef = this.db.collection("users").doc(this.user.uid).collection("states").doc("current");
+        const docRef = this._getStateDocRef(uid);
         const doc = await transaction.get(docRef);
         if (!doc.exists) return;
         const data = doc.data();
@@ -375,13 +413,17 @@ StateManager.prototype.resetUserPick = function (userId) {
         };
         this._applyResetLogic(userId, data, updates);
         transaction.update(docRef, updates);
+    }).catch((error) => {
+        this._logFirestoreError('resetUserPick', error, uid);
+        throw error;
     });
 };
 
 StateManager.prototype.cancelAllPicks = function (extraUpdates = {}) {
     if (!this.user || !this.state) return Promise.reject("Not authenticated");
+    const uid = this.user.uid;
     return this.db.runTransaction(async (transaction) => {
-        const docRef = this.db.collection("users").doc(this.user.uid).collection("states").doc("current");
+        const docRef = this._getStateDocRef(uid);
         const doc = await transaction.get(docRef);
         if (!doc.exists) return;
         const data = doc.data();
@@ -394,15 +436,19 @@ StateManager.prototype.cancelAllPicks = function (extraUpdates = {}) {
             this._applyResetLogic(uId, data, updates);
         });
         transaction.update(docRef, updates);
+    }).catch((error) => {
+        this._logFirestoreError('cancelAllPicks', error, uid);
+        throw error;
     });
 };
 
 // Start picking a list (implements precedence rule and reset rule)
 StateManager.prototype.startPicking = function (listId, activePickData) {
     if (!this.user || !this.state) return;
+    const uid = this.user.uid;
 
     return this.db.runTransaction(async (transaction) => {
-        const docRef = this.db.collection("users").doc(this.user.uid).collection("states").doc("current");
+        const docRef = this._getStateDocRef(uid);
         const doc = await transaction.get(docRef);
         if (!doc.exists) return;
         const data = doc.data();
@@ -432,6 +478,9 @@ StateManager.prototype.startPicking = function (listId, activePickData) {
         updates.mode = 'PICK';
 
         transaction.update(docRef, updates);
+    }).catch((error) => {
+        this._logFirestoreError('startPicking', error, uid);
+        throw error;
     });
 };
 
@@ -476,7 +525,11 @@ StateManager.prototype.resetPreserveConfig = function () {
         delete nextState.config.csvFormat;
     }
 
-    return this.db.collection("users").doc(this.user.uid).collection("states").doc("current").set(nextState);
+    const uid = this.user.uid;
+    return this._getStateDocRef(uid).set(nextState).catch((error) => {
+        this._logFirestoreError('resetPreserveConfig', error, uid);
+        throw error;
+    });
 };
 
 StateManager.prototype.reset = function () {
@@ -508,7 +561,8 @@ StateManager.prototype.selectSlot = function (bayId, subId) {
     const slotKey = `${bayId}-${subId}`;
     const pendingJan = pending.jan;
     const pendingRequestId = pending.requestId || null;
-    const docRef = this.db.collection("users").doc(this.user.uid).collection("states").doc("current");
+    const uid = this.user.uid;
+    const docRef = this._getStateDocRef(uid);
 
     const opId = this.setOptimisticSlot(slotKey, pendingJan);
     this.clearLocalInjectPending();
@@ -570,14 +624,16 @@ StateManager.prototype.selectSlot = function (bayId, subId) {
             requestedAt: pending.requestedAt,
             requestId: pendingRequestId
         });
+        this._logFirestoreError('selectSlot', error, uid);
         throw error;
     });
 };
 
 StateManager.prototype.unassignSlot = function (slotKey, targetJan) {
     if (!this.user || !this.state) return Promise.reject("Not authenticated");
+    const uid = this.user.uid;
     return this.db.runTransaction(async (transaction) => {
-        const docRef = this.db.collection("users").doc(this.user.uid).collection("states").doc("current");
+        const docRef = this._getStateDocRef(uid);
         const doc = await transaction.get(docRef);
         if (!doc.exists) return;
         const data = doc.data();
@@ -601,13 +657,17 @@ StateManager.prototype.unassignSlot = function (slotKey, targetJan) {
             
             transaction.update(docRef, { slots: newSlots, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
         }
+    }).catch((error) => {
+        this._logFirestoreError('unassignSlot', error, uid);
+        throw error;
     });
 };
 
 StateManager.prototype.resetBay = function (bayId) {
     if (!this.user || !this.state) return Promise.reject("Not authenticated");
+    const uid = this.user.uid;
     return this.db.runTransaction(async (transaction) => {
-        const docRef = this.db.collection("users").doc(this.user.uid).collection("states").doc("current");
+        const docRef = this._getStateDocRef(uid);
         const doc = await transaction.get(docRef);
         if (!doc.exists) return;
         const data = doc.data();
@@ -630,5 +690,8 @@ StateManager.prototype.resetBay = function (bayId) {
         }
         
         transaction.update(docRef, updates);
+    }).catch((error) => {
+        this._logFirestoreError('resetBay', error, uid);
+        throw error;
     });
 };
