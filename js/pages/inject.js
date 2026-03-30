@@ -8,6 +8,9 @@
         const instPanel = document.getElementById('instructionPanel');
         const sessionDisplay = document.getElementById('sessionDisplay');
         let hasRequestedInjectModeSync = false;
+        let highlightedSlotKey = null;
+        let highlightTimer = null;
+        const HIGHLIGHT_MS = 3000;
 
         const stateMgr = new StateManager(
             (state) => {
@@ -81,6 +84,19 @@
         };
         let lastAcceptedJan = null;
         let lastAcceptedAt = 0;
+
+        const highlightDuplicateSlot = (slotKey) => {
+            highlightedSlotKey = slotKey || null;
+            render(stateMgr.state);
+
+            if (highlightTimer) {
+                clearTimeout(highlightTimer);
+            }
+            highlightTimer = setTimeout(() => {
+                highlightedSlotKey = null;
+                render(stateMgr.state);
+            }, HIGHLIGHT_MS);
+        };
 
         function parseCsvLine(line) {
             const result = [];
@@ -324,6 +340,10 @@
                         if (slotData) {
                             slot.classList.add('filled');
                             slot.style.background = `hsl(${(s - 1) * 60 + 200}, 70%, 50%)`;
+
+                            if (highlightedSlotKey === slotKey) {
+                                slot.classList.add('duplicate-highlight');
+                            }
                             
                             const skus = slotData.skus || (slotData.sku ? [slotData.sku] : []);
                             if (skus.length === 1) {
@@ -512,6 +532,7 @@
 
                 if (alreadyInSlot) {
                     AudioManager.playErrorSound();
+                    highlightDuplicateSlot(assignedSlotKey);
                     showMessage(`⚠️ SKU ${jan} は No.${assignedSlotKey} に投入済みです`, 'error');
                 } else {
                     const now = Date.now();
