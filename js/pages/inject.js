@@ -507,11 +507,12 @@
                 showMessage(`❌ SKU ${jan} はリストにありません`, 'error');
             } else {
                 const janToSlot = buildJanToSlotMap(getMergedSlots(state));
-                const alreadyInSlot = !!janToSlot[jan];
+                const assignedSlotKey = janToSlot[jan];
+                const alreadyInSlot = !!assignedSlotKey;
 
                 if (alreadyInSlot) {
                     AudioManager.playErrorSound();
-                    showMessage(`⚠️ SKU ${jan} は既に枠に投入済みです`, 'error');
+                    showMessage(`⚠️ SKU ${jan} は No.${assignedSlotKey} に投入済みです`, 'error');
                 } else {
                     const now = Date.now();
                     if (lastAcceptedJan === jan && (now - lastAcceptedAt) < 500) {
