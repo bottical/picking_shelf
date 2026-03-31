@@ -453,65 +453,109 @@
             alert('CSVの列取り込み設定を更新しました。');
         });
 
+        const processImportedRows = async (rows, format) => {
+            const idxPick = format.pickCol - 1;
+            const idxJan = format.janCol - 1;
+            const idxQty = format.qtyCol - 1;
+            const targetRows = format.skipHeader ? rows.slice(1) : rows;
+
+            const aggregatedInject = {};
+            const groupedPick = {};
+
+            targetRows.forEach((row) => {
+                const parts = Array.isArray(row)
+                    ? row.map(v => String(v ?? '').trim())
+                    : parseCsvLine(String(row ?? ''));
+                const maxIdx = Math.max(idxPick, idxJan, idxQty);
+                if (parts.length <= maxIdx) return;
+
+                const pickNo = String(parts[idxPick] ?? '').trim();
+                const jan = normalizeJan(String(parts[idxJan] ?? '').trim());
+                const qtyRaw = String(parts[idxQty] ?? '').trim();
+                const qty = parseInt(qtyRaw, 10) || 0;
+
+                if (!jan || !pickNo) return;
+
+                // Aggregate for Injection validation
+                aggregatedInject[jan] = (aggregatedInject[jan] || 0) + qty;
+
+                // Group for Picking Lists
+                if (!groupedPick[pickNo]) groupedPick[pickNo] = [];
+                groupedPick[pickNo].push({ jan, qty, status: 'PENDING' });
+            });
+
+            const updates = {
+                injectList: aggregatedInject,
+                pickLists: groupedPick
+            };
+            const currentSplits = stateMgr.state?.splits || {};
+            const newSplits = { ...currentSplits };
+            let needInit = false;
+            const totalBays = stateMgr.state?.config?.bays || 9;
+            for (let b = 1; b <= totalBays; b++) {
+                if (newSplits[b] === undefined) {
+                    newSplits[b] = 1;
+                    needInit = true;
+                }
+            }
+            if (needInit) updates.splits = newSplits;
+
+            try {
+                await stateMgr.update(updates);
+                alert(`${Object.keys(aggregatedInject).length} 品目のデータを読み込みました。\nピッキングリスト: ${Object.keys(groupedPick).length} 件`);
+            } catch (e) {
+                console.error('インポートデータの保存に失敗しました:', e);
+                alert('インポートデータの保存に失敗しました。通信状態をご確認ください。');
+            }
+        };
+
         loadCsvBtn.addEventListener('click', () => {
             const file = document.getElementById('csvFile').files[0];
             if (!file) return alert("ファイルを選択してください");
 
             const format = getSavedCsvFormat();
-            const idxPick = format.pickCol - 1;
-            const idxJan = format.janCol - 1;
-            const idxQty = format.qtyCol - 1;
+            const lowerName = (file.name || '').toLowerCase();
+            const isExcel = lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls');
+            const isCsv = lowerName.endsWith('.csv');
+            if (!isCsv && !isExcel) {
+                return alert('対応形式は CSV / Excel (.xlsx, .xls) です。');
+            }
 
             const reader = new FileReader();
-            reader.onload = (e) => {
+            reader.onload = async (e) => {
+                if (isExcel) {
+                    if (typeof XLSX === 'undefined') {
+                        return alert('Excel読込ライブラリの読み込みに失敗しました。');
+                    }
+                    try {
+                        const workbook = XLSX.read(e.target.result, { type: 'array' });
+                        const firstSheetName = workbook.SheetNames[0];
+                        if (!firstSheetName) {
+                            return alert('Excelファイルにシートがありません。');
+                        }
+                        const firstSheet = workbook.Sheets[firstSheetName];
+                        const rows = XLSX.utils.sheet_to_json(firstSheet, {
+                            header: 1,
+                            raw: false,
+                            defval: ''
+                        });
+                        await processImportedRows(rows, format);
+                    } catch (err) {
+                        console.error('Excelファイルの解析に失敗しました:', err);
+                        alert('Excelファイルの読み込みに失敗しました。ファイル形式をご確認ください。');
+                    }
+                    return;
+                }
+
                 const text = e.target.result;
                 const lines = text.split(/\r?\n/).filter(x => x.trim());
-
-                if (format.skipHeader && lines.length > 0) lines.shift();
-
-                const aggregatedInject = {};
-                const groupedPick = {};
-
-                lines.forEach(line => {
-                    const parts = parseCsvLine(line);
-                    const maxIdx = Math.max(idxPick, idxJan, idxQty);
-                    if (parts.length <= maxIdx) return;
-
-                    const pickNo = String(parts[idxPick] ?? '').trim();
-                    const jan = normalizeJan(String(parts[idxJan] ?? '').trim());
-                    const qtyRaw = String(parts[idxQty] ?? '').trim();
-                    const qty = parseInt(qtyRaw, 10) || 0;
-
-                    if (!jan || !pickNo) return;
-
-                    // Aggregate for Injection validation
-                    aggregatedInject[jan] = (aggregatedInject[jan] || 0) + qty;
-
-                    // Group for Picking Lists
-                    if (!groupedPick[pickNo]) groupedPick[pickNo] = [];
-                    groupedPick[pickNo].push({ jan, qty, status: 'PENDING' });
-                });
-
-                const updates = {
-                    injectList: aggregatedInject,
-                    pickLists: groupedPick
-                };
-                const currentSplits = stateMgr.state?.splits || {};
-                const newSplits = { ...currentSplits };
-                let needInit = false;
-                const totalBays = stateMgr.state?.config?.bays || 9;
-                for (let b = 1; b <= totalBays; b++) {
-                    if (newSplits[b] === undefined) {
-                        newSplits[b] = 1;
-                        needInit = true;
-                    }
-                }
-                if (needInit) updates.splits = newSplits;
-
-                stateMgr.update(updates);
-                alert(`${Object.keys(aggregatedInject).length} 品目のデータを読み込みました。\nピッキングリスト: ${Object.keys(groupedPick).length} 件`);
+                await processImportedRows(lines, format);
             };
-            reader.readAsText(file);
+            if (isExcel) {
+                reader.readAsArrayBuffer(file);
+            } else {
+                reader.readAsText(file);
+            }
         });
 
         scanInput.addEventListener('keydown', async (e) => {

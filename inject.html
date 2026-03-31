@@ -74,7 +74,7 @@
                     <h3 style="margin:0; font-size:1rem;">1. CSVファイル読込</h3>
                     <button id="csvConfigBtn" class="btn btn-outline" style="padding: 4px 8px; font-size: 0.75rem;">⚙️ 設定</button>
                 </div>
-                <input type="file" id="csvFile" accept=".csv" style="font-size: 0.8rem;">
+                <input type="file" id="csvFile" accept=".csv,.xlsx,.xls" style="font-size: 0.8rem;">
                 <button id="loadCsvBtn" class="btn btn-primary" style="width:100%;">インポート実行</button>
             </div>
 
@@ -153,6 +153,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
     <script src="js/firebase-config.js"></script>
     <script src="js/state-manager.js"></script>
     <script src="js/audio-manager.js"></script>
