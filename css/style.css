@@ -351,3 +351,33 @@ input:focus {
 @keyframes pulse-2 { 0% { opacity: 0.6; box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.4); } 50% { opacity: 1; box-shadow: 0 0 0 10px rgba(22, 163, 74, 0); } 100% { opacity: 0.6; } }
 @keyframes pulse-3 { 0% { opacity: 0.6; box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.4); } 50% { opacity: 1; box-shadow: 0 0 0 10px rgba(217, 119, 6, 0); } 100% { opacity: 0.6; } }
 @keyframes pulse-4 { 0% { opacity: 0.6; box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4); } 50% { opacity: 1; box-shadow: 0 0 0 10px rgba(139, 92, 246, 0); } 100% { opacity: 0.6; } }
+
+/* WALL: multi SKU slot highlight */
+.wall-root .block.multi-sku-slot {
+    outline: 2px solid rgba(251, 191, 36, 0.58);
+    outline-offset: -2px;
+}
+
+.wall-root .block.multi-sku-slot::after {
+    content: '複';
+    position: absolute;
+    top: 3px;
+    left: 4px;
+    font-size: 0.32em;
+    line-height: 1;
+    font-weight: 900;
+    color: #fef3c7;
+    background: rgba(120, 53, 15, 0.82);
+    border: 1px solid rgba(253, 186, 116, 0.7);
+    border-radius: 3px;
+    padding: 1px 3px;
+    pointer-events: none;
+    z-index: 2;
+}
+
+.wall-root .block.multi-sku-slot.is-dense::after {
+    font-size: 0.28em;
+    top: 2px;
+    left: 3px;
+    padding: 1px 2px;
+}

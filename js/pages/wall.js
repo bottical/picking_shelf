@@ -331,6 +331,21 @@
             `;
         };
 
+        const renderPickBlock = (blockEl, primaryText, qtyText, subLabel = '') => {
+            blockEl.innerHTML = `
+                <div class="block-content">
+                    <span class="block-main-label">${primaryText || ''}</span>
+                    ${subLabel ? `<span class="block-sub-label">${subLabel}</span>` : ''}
+                    <span class="block-qty">${qtyText || ''}</span>
+                </div>
+            `;
+        };
+
+        const formatJanLast4 = (jan) => {
+            const janText = String(jan || '');
+            return janText ? `...${janText.slice(-4)}` : '';
+        };
+
         const showSlotSkusModal = (b, s, skus, stateMgr) => {
             let overlay = document.getElementById('slotSkusOverlay');
             if (overlay) overlay.remove();
@@ -564,13 +579,31 @@
                 if (placement?.column) block.style.gridColumn = placement.column;
 
                 const skus = slotData ? (slotData.skus || (slotData.sku ? [slotData.sku] : [])) : [];
+                const isMultiSkuSlot = skus.length >= 2;
+                const targetSkus = Array.isArray(myPickData?.skus) ? myPickData.skus : [];
+                const targetSkuCount = targetSkus.length;
+                const targetJan = targetSkuCount === 1 ? targetSkus[0] : null;
+                const isMultiSlotSingleTarget = isMultiSkuSlot && targetSkuCount === 1;
+                const isMultiTargetPick = targetSkuCount >= 2;
+                const normalPickColor = getPickColor(s);
+                const multiSkuColor = '#b45309';
+                const slotPickColor = isMultiSkuSlot ? multiSkuColor : normalPickColor;
+                if (isMultiSkuSlot) block.classList.add('multi-sku-slot');
+
                 if (indicators.length > 0) {
                     const myInd = indicators.find(ind => ind.isMe);
                     if (myInd && myInd.type === 'PICK') {
                         block.classList.add('picking');
                         block.classList.add(`pulse-user-${stateMgr.currentUserId.slice(-1)}`);
-                        const pickLabel = skus.length === 1 ? "..." + skus[0].slice(-4) : (denseEnabled ? `${myPickData.skus.length} SKU` : `対象: ${myPickData.skus.length} SKU`);
-                        renderStackedBlock(block, pickLabel, `${myPickData.pendingQty}`);
+                        if (isMultiSlotSingleTarget) {
+                            renderPickBlock(block, formatJanLast4(targetJan), `${myPickData.pendingQty}`, '他SKUあり');
+                        } else if (isMultiTargetPick) {
+                            const multiTargetLabel = denseEnabled ? `${targetSkuCount} SKU` : `対象 ${targetSkuCount} SKU`;
+                            renderPickBlock(block, multiTargetLabel, `${myPickData.pendingQty}`, '複数SKU');
+                        } else {
+                            const pickLabel = skus.length === 1 ? formatJanLast4(skus[0]) : (denseEnabled ? `${targetSkuCount} SKU` : `対象: ${targetSkuCount} SKU`);
+                            renderStackedBlock(block, pickLabel, `${myPickData.pendingQty}`);
+                        }
                         block.onclick = (e) => {
                             e.stopPropagation();
                             markSlotDone(slotKey, state, stateMgr);
@@ -600,12 +633,19 @@
                         }
                         block.appendChild(infoDiv);
                     }
-                    block.style.setProperty('--pick-color', getPickColor(s));
+                    block.style.setProperty('--pick-color', slotPickColor);
                 } else if (myPickData && myPickData.pendingQty === 0) {
                     block.classList.add('picking-done');
-                    const doneLabel = skus.length === 1 ? "..." + skus[0].slice(-4) : (denseEnabled ? `完了 ${myPickData.skus.length} SKU` : `完了済: ${myPickData.skus.length} SKU`);
-                    renderStackedBlock(block, doneLabel, `${myPickData.totalQty}`);
-                    block.style.setProperty('--pick-color', getPickColor(s));
+                    if (isMultiSlotSingleTarget) {
+                        renderPickBlock(block, formatJanLast4(targetJan), `${myPickData.totalQty}`, '他SKUあり');
+                    } else if (isMultiTargetPick) {
+                        const doneLabel = denseEnabled ? `${targetSkuCount} SKU` : `完了 ${targetSkuCount} SKU`;
+                        renderPickBlock(block, doneLabel, `${myPickData.totalQty}`, '複数SKU');
+                    } else {
+                        const doneLabel = skus.length === 1 ? formatJanLast4(skus[0]) : (denseEnabled ? `完了 ${targetSkuCount} SKU` : `完了済: ${targetSkuCount} SKU`);
+                        renderStackedBlock(block, doneLabel, `${myPickData.totalQty}`);
+                    }
+                    block.style.setProperty('--pick-color', slotPickColor);
                 } else if (skus.length > 0) {
                     block.classList.add('filled');
                     block.style.cursor = 'pointer';
@@ -617,13 +657,13 @@
                     if (skus.length === 1) {
                         const jan = skus[0];
                         const totalQty = state.injectList?.[jan] || 0;
-                        const label = `...${String(jan).slice(-4)}`;
+                        const label = formatJanLast4(jan);
                         renderStackedBlock(block, label, `${totalQty}`);
                     } else {
                         const totalQty = skus.reduce((sum, jan) => sum + (state.injectList?.[jan] || 0), 0);
                         renderStackedBlock(block, `${skus.length} SKU`, totalQty > 0 ? `${totalQty}` : '');
                     }
-                    block.style.setProperty('--pick-color', getPickColor(s));
+                    block.style.setProperty('--pick-color', slotPickColor);
                 } else if (isInjectReady) {
                     block.classList.add('inject-ready');
                     block.textContent = 'TAP';
