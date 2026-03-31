@@ -7,6 +7,7 @@
     };
 
     const startAudio = createAudio('audio/start.mp3');
+    const multipleStartAudio = createAudio('audio/multiple_start.mp3');
     const completeAudio = createAudio('audio/complete.mp3');
     const errorAudio = createAudio('audio/error.mp3');
 
