@@ -586,7 +586,7 @@
                 const isMultiSlotSingleTarget = isMultiSkuSlot && targetSkuCount === 1;
                 const isMultiTargetPick = targetSkuCount >= 2;
                 const normalPickColor = getPickColor(s);
-                const multiSkuColor = '#b45309';
+                const multiSkuColor = '#ef4444';
                 const slotPickColor = isMultiSkuSlot ? multiSkuColor : normalPickColor;
                 if (isMultiSkuSlot) block.classList.add('multi-sku-slot');
 
