@@ -27,6 +27,9 @@
         playStartSound() {
             playAudio(startAudio, 'start');
         },
+        playMultipleStartSound() {
+            playAudio(multipleStartAudio, 'multiple_start');
+        },
         playCompleteSound() {
             playAudio(completeAudio, 'complete');
         },
