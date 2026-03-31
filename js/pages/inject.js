@@ -593,7 +593,12 @@
                         requestedAt: Date.now(),
                         requestId
                     };
-                    AudioManager.playStartSound();
+                    if (totalQty > 1) {
+                        AudioManager.playMultipleStartSound();
+                    } else {
+                        AudioManager.playStartSound();
+                    }
+                    stateMgr.setLocalInjectPending(pending);
                     stateMgr.setLocalInjectPending(pending);
                     scanInput.disabled = true;
                     scanInput.parentElement.style.opacity = '0.5';
