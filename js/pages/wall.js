@@ -558,6 +558,7 @@
             const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
             const myActivePick = currentUserState.activePick || {};
             const isUserPickingAnywhere = Object.values(myActivePick).some(p => p.pendingQty > 0);
+            const duplicateHighlight = getActiveDuplicateHighlight(state);
             const effectivePending = stateMgr.getEffectiveInjectPendingForCurrentUser(state);
             const firestorePending = currentUserState.injectPending || null;
             const firestorePendingRequestId = firestorePending?.requestId || null;
@@ -601,7 +602,7 @@
             const body = document.createElement('div');
             body.className = `screen-body ${getGridClass(splitCount, orientation)}`;
             const mergedSlots = getMergedSlots(state);
-            const duplicateHighlight = getActiveDuplicateHighlight(state);
+            const isDuplicateFocusActive = !!duplicateHighlight?.slotKey;
             const clearDuplicateHighlightIfMatched = (slotKey) => {
                 if (duplicateHighlight?.slotKey !== slotKey) return;
                 stateMgr.clearDuplicateHighlight({ slotKey }).catch((error) => {
@@ -616,6 +617,9 @@
                 const indicators = getIndicators(state, slotKey);
                 const myPickData = myActivePick[slotKey];
                 const isTargetForMe = myPickData && myPickData.pendingQty > 0;
+                const isDuplicateTargetSlot = duplicateHighlight?.slotKey === slotKey;
+                const shouldGrayOutByPick = isUserPickingAnywhere && !isTargetForMe;
+                const shouldGrayOutByDuplicate = isDuplicateFocusActive && !isDuplicateTargetSlot;
 
                 const block = document.createElement('div');
                 block.className = 'block';
@@ -624,7 +628,7 @@
                 if (optimisticMeta?.status === 'pending') block.classList.add('optimistic-pending');
                 if (optimisticMeta?.status === 'committed') block.classList.add('optimistic-committed');
                 if (duplicateHighlight?.slotKey === slotKey) block.classList.add('wall-duplicate-highlight');
-                if (isUserPickingAnywhere && !isTargetForMe) {
+                if (shouldGrayOutByPick || shouldGrayOutByDuplicate) {
                     block.classList.add('grayed-out');
                 }
 
@@ -812,6 +816,7 @@
             const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
             const myActivePick = currentUserState.activePick || {};
             const isUserPickingAnywhere = Object.values(myActivePick).some(p => p.pendingQty > 0);
+            const duplicateHighlight = getActiveDuplicateHighlight(state);
 
             const indicators = getIndicators(state, 'UNALLOCATED');
             const myPick = indicators.find(ind => ind.isMe);
@@ -819,7 +824,8 @@
             const isAnyPick = indicators.length > 0;
             const isDone = myPick && myPick.qty === 0;
 
-            const blackoutClass = (isUserPickingAnywhere && !isTargetForMe) ? 'grayed-out' : '';
+            const shouldGrayOutByDuplicate = !!duplicateHighlight?.slotKey && duplicateHighlight.slotKey !== 'UNALLOCATED';
+            const blackoutClass = ((isUserPickingAnywhere && !isTargetForMe) || shouldGrayOutByDuplicate) ? 'grayed-out' : '';
             const bgColor = myPick ? (isDone ? '#000000' : '#ca8a04') : (isAnyPick ? '#334155' : '#1e293b');
             const borderColor = isAnyPick ? '#eab308' : '#334155';
 
@@ -886,13 +892,15 @@
                 : totalQty;
             const myPickIndicator = indicators.find(ind => ind.isMe);
             const isTargetForMe = hasPending || Boolean(myPickIndicator && myPickIndicator.qty > 0);
+            const duplicateHighlight = getActiveDuplicateHighlight(state);
+            const shouldGrayOutByDuplicate = !!duplicateHighlight?.slotKey && duplicateHighlight.slotKey !== 'UNALLOCATED';
 
             const body = document.createElement('div');
             body.className = 'screen-body grid-split-1';
 
             const block = document.createElement('div');
             block.className = 'block';
-            if (isUserPickingAnywhere && !isTargetForMe) {
+            if ((isUserPickingAnywhere && !isTargetForMe) || shouldGrayOutByDuplicate) {
                 block.classList.add('grayed-out');
             }
 
@@ -1130,11 +1138,18 @@
                 
                 selectorViewContainer.innerHTML = '';
                 const duplicateHighlight = getActiveDuplicateHighlight(state);
+                const duplicateHighlightBay = duplicateHighlight?.slotKey ? String(duplicateHighlight.slotKey).split('-')[0] : null;
+                const isDuplicateFocusActive = !!duplicateHighlightBay;
                 for (let b = 1; b <= config.bays; b++) {
                     const btn = document.createElement('div');
                     btn.className = 'selector-btn';
                     btn.style.position = 'relative';
-                    if (duplicateHighlight?.slotKey && duplicateHighlight.slotKey.startsWith(`${b}-`)) {
+                    const isDuplicateTargetBay = String(b) === duplicateHighlightBay;
+                    if (isDuplicateFocusActive && !isDuplicateTargetBay) {
+                        btn.style.opacity = '0.35';
+                        btn.style.filter = 'grayscale(1)';
+                    }
+                    if (isDuplicateTargetBay) {
                         btn.classList.add('wall-duplicate-highlight');
                     }
 
@@ -1195,6 +1210,10 @@
                 const othersBtn = document.createElement('div');
                 othersBtn.className = 'selector-btn';
                 othersBtn.style.position = 'relative';
+                if (isDuplicateFocusActive) {
+                    othersBtn.style.opacity = '0.35';
+                    othersBtn.style.filter = 'grayscale(1)';
+                }
 
                 if (othersPickFound) {
                     othersBtn.style.background = othersDone ? 'black' : '#eab308';
