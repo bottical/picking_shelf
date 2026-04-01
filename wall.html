@@ -187,7 +187,7 @@
             font-size: var(--wall-block-font-size);
             font-weight: 900;
             color: #ffffff; /* Bright white text */
-            border: 2px solid rgba(255, 255, 255, 0.4); /* Clear white border */
+            border: 2px solid rgba(255, 255, 255, 0.95); /* 分割罫線をより明確に */
             border-radius: 4px;
             transition: 0.2s;
             position: relative;
@@ -263,14 +263,14 @@
         .block.filled {
             background: var(--pick-color);
             color: white;
-            border-color: transparent; /* Remove border for filled state */
+            border-color: rgba(255, 255, 255, 0.95); /* 投入済みでも白罫線を維持 */
             box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.2);
         }
         .block.picking {
             background: var(--pick-color);
             color: white;
             font-size: calc(var(--wall-block-font-size) * 1.5);
-            border-color: transparent;
+            border-color: rgba(255, 255, 255, 0.95); /* ピッキング中も白罫線を維持 */
             box-shadow: 0 0 20px var(--pick-color);
             z-index: 10;
             opacity: 1;
@@ -286,7 +286,7 @@
         .block.grayed-out {
             background: #111;
             color: #555;
-            border-color: #333;
+            border-color: rgba(255, 255, 255, 0.72); /* 対象外の黒背景でも境界が見えるように */
             opacity: 0.4;
             filter: grayscale(1);
         }
