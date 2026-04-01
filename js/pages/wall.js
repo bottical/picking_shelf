@@ -827,7 +827,14 @@
             const bay10Screen = bay10Container.querySelector('.mobile-screen');
             if (bay10Screen) {
                 bay10Screen.style.cursor = 'pointer';
-                bay10Screen.onclick = () => showUnallocatedSkusModal(state);
+                bay10Screen.onclick = (e) => {
+                    e.stopPropagation();
+                    if (myPick && myPick.qty > 0) {
+                        markSlotDone('UNALLOCATED', state, stateMgr);
+                    } else {
+                        showUnallocatedSkusModal(state);
+                    }
+                };
             }
             bay10Container.classList.remove('hidden');
         };
