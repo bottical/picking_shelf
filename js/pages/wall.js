@@ -317,6 +317,10 @@
             return stateMgr.localUiState.optimisticSlots?.[slotKey]?._meta || null;
         };
 
+        const getActiveDuplicateHighlight = (state) => {
+            return stateMgr.getActiveDuplicateHighlightForUser(state, stateMgr.currentUserId);
+        };
+
         const getDenseActive = (splitCount) => {
             const deviceSettings = getDeviceWallSettings();
             return deviceSettings.denseTextMode !== false && splitCount >= 5;
@@ -597,6 +601,13 @@
             const body = document.createElement('div');
             body.className = `screen-body ${getGridClass(splitCount, orientation)}`;
             const mergedSlots = getMergedSlots(state);
+            const duplicateHighlight = getActiveDuplicateHighlight(state);
+            const clearDuplicateHighlightIfMatched = (slotKey) => {
+                if (duplicateHighlight?.slotKey !== slotKey) return;
+                stateMgr.clearDuplicateHighlight({ slotKey }).catch((error) => {
+                    console.error('duplicateHighlight の解除に失敗しました:', error);
+                });
+            };
 
             for (let s = 1; s <= splitCount; s++) {
                 const slotKey = `${b}-${s}`;
@@ -612,6 +623,7 @@
                 const optimisticMeta = getOptimisticMeta(slotKey);
                 if (optimisticMeta?.status === 'pending') block.classList.add('optimistic-pending');
                 if (optimisticMeta?.status === 'committed') block.classList.add('optimistic-committed');
+                if (duplicateHighlight?.slotKey === slotKey) block.classList.add('wall-duplicate-highlight');
                 if (isUserPickingAnywhere && !isTargetForMe) {
                     block.classList.add('grayed-out');
                 }
@@ -648,6 +660,7 @@
                         }
                         block.onclick = (e) => {
                             e.stopPropagation();
+                            clearDuplicateHighlightIfMatched(slotKey);
                             markSlotDone(slotKey, state, stateMgr);
                         };
                     } else {
@@ -693,6 +706,7 @@
                     block.style.cursor = 'pointer';
                     block.onclick = (e) => {
                         e.stopPropagation();
+                        clearDuplicateHighlightIfMatched(slotKey);
                         if (isInjectReady) stateMgr.selectSlot(b, s);
                         else showSlotSkusModal(b, s, skus, stateMgr);
                     };
@@ -712,6 +726,7 @@
                     block.style.setProperty('--pick-color', '#3b82f6');
                     block.onclick = (e) => {
                         e.stopPropagation();
+                        clearDuplicateHighlightIfMatched(slotKey);
                         stateMgr.selectSlot(b, s);
                     };
                 } else if (isInjectSyncing && isConfigured) {
@@ -1114,10 +1129,14 @@
                 bay10Container.classList.add('hidden');
                 
                 selectorViewContainer.innerHTML = '';
+                const duplicateHighlight = getActiveDuplicateHighlight(state);
                 for (let b = 1; b <= config.bays; b++) {
                     const btn = document.createElement('div');
                     btn.className = 'selector-btn';
                     btn.style.position = 'relative';
+                    if (duplicateHighlight?.slotKey && duplicateHighlight.slotKey.startsWith(`${b}-`)) {
+                        btn.classList.add('wall-duplicate-highlight');
+                    }
 
                     // Check for any user indicators in any slot of this bay
                     let bayPickFound = false;
