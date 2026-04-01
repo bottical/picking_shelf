@@ -117,6 +117,61 @@ StateManager.prototype.hasEffectiveInjectPendingForCurrentUser = function (state
     return !!this.getEffectiveInjectPendingForCurrentUser(state);
 };
 
+StateManager.prototype.getActiveDuplicateHighlightForUser = function (state, userId) {
+    const targetState = state || this.state || {};
+    const targetUserId = userId || this.currentUserId;
+    const duplicateHighlight = targetState.userStates?.[targetUserId]?.duplicateHighlight || null;
+    const slotKey = duplicateHighlight?.slotKey || null;
+    if (!slotKey) return null;
+    return duplicateHighlight;
+};
+
+StateManager.prototype.triggerDuplicateHighlight = function (slotKey, jan) {
+    if (!this.user) return Promise.reject("Not authenticated");
+    if (!slotKey) return Promise.resolve();
+    const uid = this.user.uid;
+    const currentUserId = this.currentUserId;
+    return this.update({
+        [`userStates.${currentUserId}.duplicateHighlight`]: {
+            slotKey,
+            jan: jan || null,
+            highlightedAt: Date.now()
+        }
+    }).catch((error) => {
+        this._logFirestoreError('triggerDuplicateHighlight', error, uid);
+        throw error;
+    });
+};
+
+StateManager.prototype.clearDuplicateHighlight = function (options = {}) {
+    if (!this.user) return Promise.reject("Not authenticated");
+    const uid = this.user.uid;
+    const currentUserId = this.currentUserId;
+    const compareSlotKey = options?.slotKey || null;
+    const compareJan = options?.jan || null;
+
+    if (!compareSlotKey && !compareJan) {
+        return this.update({
+            [`userStates.${currentUserId}.duplicateHighlight`]: null
+        }).catch((error) => {
+            this._logFirestoreError('clearDuplicateHighlight', error, uid);
+            throw error;
+        });
+    }
+
+    const duplicateHighlight = this.state?.userStates?.[currentUserId]?.duplicateHighlight || null;
+    const slotMatches = !compareSlotKey || duplicateHighlight?.slotKey === compareSlotKey;
+    const janMatches = !compareJan || duplicateHighlight?.jan === compareJan;
+    if (!slotMatches || !janMatches) return Promise.resolve({ skipped: true });
+
+    return this.update({
+        [`userStates.${currentUserId}.duplicateHighlight`]: null
+    }).catch((error) => {
+        this._logFirestoreError('clearDuplicateHighlight', error, uid);
+        throw error;
+    });
+};
+
 StateManager.prototype.cancelInjectPending = function () {
     if (!this.user) return Promise.reject("Not authenticated");
     const uid = this.user.uid;
@@ -142,7 +197,8 @@ StateManager.prototype.cancelInjectPending = function () {
         });
 
         const updates = {
-            [`userStates.${currentUserId}.injectPending`]: null
+            [`userStates.${currentUserId}.injectPending`]: null,
+            [`userStates.${currentUserId}.duplicateHighlight`]: null
         };
 
         if (!pending) {
@@ -429,11 +485,12 @@ StateManager.prototype.migrateToMultiUser = function (uid, oldData) {
         user1: {
             activePick: oldData.activePick || {},
             currentPickingNo: oldData.currentPickingNo || null,
-            injectPending: oldData.injectPending || null
+            injectPending: oldData.injectPending || null,
+            duplicateHighlight: null
         },
-        user2: { activePick: {}, currentPickingNo: null, injectPending: null },
-        user3: { activePick: {}, currentPickingNo: null, injectPending: null },
-        user4: { activePick: {}, currentPickingNo: null, injectPending: null }
+        user2: { activePick: {}, currentPickingNo: null, injectPending: null, duplicateHighlight: null },
+        user3: { activePick: {}, currentPickingNo: null, injectPending: null, duplicateHighlight: null },
+        user4: { activePick: {}, currentPickingNo: null, injectPending: null, duplicateHighlight: null }
     };
     
     const updates = {
@@ -521,10 +578,10 @@ StateManager.prototype.initializeNewSession = function (uid) {
         injectList: {},
         janIndex: {},
         userStates: {
-            user1: { activePick: {}, currentPickingNo: null, injectPending: null },
-            user2: { activePick: {}, currentPickingNo: null, injectPending: null },
-            user3: { activePick: {}, currentPickingNo: null, injectPending: null },
-            user4: { activePick: {}, currentPickingNo: null, injectPending: null }
+            user1: { activePick: {}, currentPickingNo: null, injectPending: null, duplicateHighlight: null },
+            user2: { activePick: {}, currentPickingNo: null, injectPending: null, duplicateHighlight: null },
+            user3: { activePick: {}, currentPickingNo: null, injectPending: null, duplicateHighlight: null },
+            user4: { activePick: {}, currentPickingNo: null, injectPending: null, duplicateHighlight: null }
         },
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
@@ -905,10 +962,10 @@ StateManager.prototype.resetPreserveConfig = function () {
         injectList: {},
         janIndex: {},
         userStates: {
-            user1: { activePick: {}, currentPickingNo: null, injectPending: null },
-            user2: { activePick: {}, currentPickingNo: null, injectPending: null },
-            user3: { activePick: {}, currentPickingNo: null, injectPending: null },
-            user4: { activePick: {}, currentPickingNo: null, injectPending: null }
+            user1: { activePick: {}, currentPickingNo: null, injectPending: null, duplicateHighlight: null },
+            user2: { activePick: {}, currentPickingNo: null, injectPending: null, duplicateHighlight: null },
+            user3: { activePick: {}, currentPickingNo: null, injectPending: null, duplicateHighlight: null },
+            user4: { activePick: {}, currentPickingNo: null, injectPending: null, duplicateHighlight: null }
         },
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };

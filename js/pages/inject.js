@@ -577,12 +577,18 @@
                     AudioManager.playErrorSound();
                     highlightDuplicateSlot(assignedSlotKey);
                     showMessage(`⚠️ SKU ${jan} は No.${assignedSlotKey} に投入済みです`, 'error');
+                    stateMgr.triggerDuplicateHighlight(assignedSlotKey, jan).catch((error) => {
+                        console.error('duplicateHighlight の共有に失敗しました:', error);
+                    });
                 } else {
                     const now = Date.now();
                     if (lastAcceptedJan === jan && (now - lastAcceptedAt) < 500) {
                         scanInput.value = '';
                         return;
                     }
+                    stateMgr.clearDuplicateHighlight().catch((error) => {
+                        console.error('duplicateHighlight の解除に失敗しました:', error);
+                    });
                     lastAcceptedJan = jan;
                     lastAcceptedAt = now;
                     const requestId = stateMgr.createInjectRequestId();
