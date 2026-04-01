@@ -331,6 +331,25 @@
             `;
         };
 
+        const collectUnallocatedItems = (state) => {
+            const injectList = state.injectList || {};
+            const mergedSlots = getMergedSlots(state);
+            const allocatedSkus = new Set();
+
+            Object.values(mergedSlots).forEach(slot => {
+                const skus = slot?.skus || (slot?.sku ? [slot.sku] : []);
+                skus.forEach(jan => allocatedSkus.add(String(jan)));
+            });
+
+            return Object.keys(injectList)
+                .filter(jan => !allocatedSkus.has(String(jan)))
+                .sort((a, b) => a.localeCompare(b))
+                .map(jan => ({
+                    jan,
+                    qty: Number(injectList[jan]) || 0
+                }));
+        };
+
         const renderPickBlock = (blockEl, primaryText, qtyText, subLabel = '') => {
             blockEl.innerHTML = `
                 <div class="block-content">
@@ -411,6 +430,79 @@
                 };
             });
 
+            overlay.appendChild(modal);
+            document.body.appendChild(overlay);
+        };
+
+        const showUnallocatedSkusModal = (state) => {
+            let overlay = document.getElementById('unallocatedSkusOverlay');
+            if (overlay) overlay.remove();
+
+            const items = collectUnallocatedItems(state);
+            const totalQty = items.reduce((sum, item) => sum + item.qty, 0);
+            const nextBayNo = (state.config?.bays || 9) + 1;
+
+            overlay = document.createElement('div');
+            overlay.id = 'unallocatedSkusOverlay';
+            overlay.className = 'overlay';
+            overlay.style.position = 'fixed';
+            overlay.style.inset = '0';
+            overlay.style.backgroundColor = 'rgba(0,0,0,0.7)';
+            overlay.style.display = 'flex';
+            overlay.style.alignItems = 'center';
+            overlay.style.justifyContent = 'center';
+            overlay.style.zIndex = '1000';
+            overlay.onclick = () => overlay.remove();
+
+            const modal = document.createElement('div');
+            modal.style.background = '#1e293b';
+            modal.style.padding = '2rem';
+            modal.style.borderRadius = '12px';
+            modal.style.minWidth = '320px';
+            modal.style.maxWidth = '90%';
+            modal.style.maxHeight = '80vh';
+            modal.style.color = 'white';
+            modal.style.display = 'flex';
+            modal.style.flexDirection = 'column';
+            modal.style.gap = '0.75rem';
+            modal.onclick = (e) => e.stopPropagation();
+
+            modal.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h3 style="margin:0;">No.${nextBayNo} その他（未割り当て）</h3>
+                    <button class="btn btn-outline close-btn" style="padding:4px 8px;">✕</button>
+                </div>
+                <div style="color:#cbd5e1; font-weight:700;">${items.length} SKU / 合計 ${totalQty} 個</div>
+                <div id="unallocatedList" style="display:flex; flex-direction:column; gap:0.5rem; overflow-y:auto; max-height:60vh;"></div>
+            `;
+
+            const listContainer = modal.querySelector('#unallocatedList');
+            if (items.length === 0) {
+                listContainer.innerHTML = '<div style="color:#94a3b8; text-align:center; padding:0.5rem 0;">未割り当てSKUはありません</div>';
+            } else {
+                items.forEach(({ jan, qty }) => {
+                    const row = document.createElement('div');
+                    row.style.display = 'flex';
+                    row.style.justifyContent = 'space-between';
+                    row.style.alignItems = 'center';
+                    row.style.background = '#334155';
+                    row.style.padding = '0.75rem';
+                    row.style.borderRadius = '6px';
+                    row.innerHTML = `
+                        <div style="display:flex; flex-direction:column; gap:2px;">
+                            <span style="font-size:0.72rem; color:#94a3b8; font-weight:700;">JAN</span>
+                            <span style="font-family:monospace; font-weight:700;">${jan}</span>
+                        </div>
+                        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:2px;">
+                            <span style="font-size:0.72rem; color:#94a3b8; font-weight:700;">数量</span>
+                            <span style="font-weight:800;">${qty}</span>
+                        </div>
+                    `;
+                    listContainer.appendChild(row);
+                });
+            }
+
+            modal.querySelector('.close-btn').onclick = () => overlay.remove();
             overlay.appendChild(modal);
             document.body.appendChild(overlay);
         };
@@ -749,15 +841,9 @@
         };
 
         const renderBay10 = (state) => {
-            const injectList = state.injectList || {};
-            const slots = getMergedSlots(state);
+            const unallocatedItems = collectUnallocatedItems(state);
             const nextBayNo = (state.config?.bays || 9) + 1;
-            const allocatedSkus = new Set();
-            Object.values(slots).forEach(slot => {
-                const skus = slot.skus || (slot.sku ? [slot.sku] : []);
-                skus.forEach(sku => allocatedSkus.add(sku));
-            });
-            const unallocatedCount = Object.keys(injectList).filter(jan => !allocatedSkus.has(jan)).length;
+            const unallocatedCount = unallocatedItems.length;
             const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
             const myActivePick = currentUserState.activePick || {};
             const isUserPickingAnywhere = Object.values(myActivePick).some(p => p.pendingQty > 0);
@@ -788,22 +874,20 @@
                     </div>
                 </div>
             `;
+            const bay10Screen = bay10Container.querySelector('.mobile-screen');
+            if (bay10Screen) {
+                bay10Screen.style.cursor = 'pointer';
+                bay10Screen.onclick = () => showUnallocatedSkusModal(state);
+            }
             bay10Container.classList.remove('hidden');
         };
 
         // --- Main Render Logic ---
 
         const renderUnallocatedDetail = (state) => {
-            const injectList = state.injectList || {};
-            const slots = getMergedSlots(state);
-            const allocatedSkus = new Set();
-            Object.values(slots).forEach(slot => {
-                const skus = slot.skus || (slot.sku ? [slot.sku] : []);
-                skus.forEach(sku => allocatedSkus.add(sku));
-            });
-            const unallocatedKeys = Object.keys(injectList).filter(jan => !allocatedSkus.has(jan));
-            const skuCount = unallocatedKeys.length;
-            const totalQty = unallocatedKeys.reduce((sum, jan) => sum + injectList[jan], 0);
+            const unallocatedItems = collectUnallocatedItems(state);
+            const skuCount = unallocatedItems.length;
+            const totalQty = unallocatedItems.reduce((sum, item) => sum + item.qty, 0);
 
             const container = document.createElement('div');
             container.className = 'mobile-screen';
@@ -895,6 +979,11 @@
                     <div style="line-height: 1; font-weight: 900;">${totalQty} 個</div>
                 `;
                 block.style.setProperty('--pick-color', '#334155');
+                block.style.cursor = 'pointer';
+                block.onclick = (e) => {
+                    e.stopPropagation();
+                    showUnallocatedSkusModal(state);
+                };
             } else {
                 block.textContent = "空";
             }
@@ -1121,14 +1210,7 @@
                 }
                 
                 const nextBayNo = config.bays + 1;
-                const injectList = state.injectList || {};
-                const slots = getMergedSlots(state);
-                const allocatedSkus = new Set();
-                Object.values(slots).forEach(slot => {
-                    const skus = slot.skus || (slot.sku ? [slot.sku] : []);
-                    skus.forEach(sku => allocatedSkus.add(sku));
-                });
-                const unallocatedCount = Object.keys(injectList).filter(jan => !allocatedSkus.has(jan)).length;
+                const unallocatedCount = collectUnallocatedItems(state).length;
                 
                 const othersIndicators = getIndicators(state, 'UNALLOCATED');
                 const othersPickFound = othersIndicators.some(ind => ind.type === 'PICK');
