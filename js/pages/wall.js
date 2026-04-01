@@ -511,57 +511,7 @@
             const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
             const listId = currentUserState.currentPickingNo;
             if (!listId) return;
-            const lines = [...state.pickLists[listId]];
-            const mergedSlots = getMergedSlots(state);
-            let changed = false;
-
-            lines.forEach(l => {
-                if (l.status === 'DONE') return;
-                
-                const entry = Object.entries(mergedSlots).find(([k, v]) => {
-                    const skus = v.skus || (v.sku ? [v.sku] : []);
-                    return skus.includes(l.jan);
-                });
-                const lineSlotKey = entry ? entry[0] : 'UNALLOCATED';
-
-                if (lineSlotKey === slotKey) {
-                    l.status = 'DONE';
-                    changed = true;
-                }
-            });
-
-            if (changed) {
-                const updates = {
-                    [`pickLists.${listId}`]: lines
-                };
-
-                const allDone = lines.every(l => l.status === 'DONE');
-                if (allDone) {
-                    updates[`userStates.${stateMgr.currentUserId}.activePick`] = {};
-                } else {
-                    const newActivePick = {};
-                    lines.forEach(l => {
-                        const entry = Object.entries(mergedSlots).find(([k, v]) => {
-                            const skus = v.skus || (v.sku ? [v.sku] : []);
-                            return skus.includes(l.jan);
-                        });
-                        const lSlotKey = entry ? entry[0] : 'UNALLOCATED';
-
-                        if (!newActivePick[lSlotKey]) {
-                            newActivePick[lSlotKey] = { totalQty: 0, pendingQty: 0, skus: [], pickNo: listId };
-                        }
-                        newActivePick[lSlotKey].totalQty += l.qty;
-                        if (l.status !== 'DONE') {
-                            newActivePick[lSlotKey].pendingQty += l.qty;
-                        }
-                        if (!newActivePick[lSlotKey].skus.includes(l.jan)) {
-                            newActivePick[lSlotKey].skus.push(l.jan);
-                        }
-                    });
-                    updates[`userStates.${stateMgr.currentUserId}.activePick`] = newActivePick;
-                }
-                stateMgr.update(updates);
-            }
+            stateMgr.completePickBySlot(listId, slotKey);
         };
 
         const getIndicators = (state, slotKey) => {

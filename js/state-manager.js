@@ -7,6 +7,13 @@ function StateManager(onStateChange, onUserChange) {
     this.user = null;
     this.state = null;
     this.unsubscribeState = null;
+    this.currentPickList = null;
+    this.currentPickListId = null;
+    this.unsubscribePickList = null;
+    this.currentPickListLoading = false;
+    this.currentPickListNotFound = false;
+    this.migrationInFlight = false;
+    this.migrationCompleted = false;
 
     if (!firebase.apps.length) {
         firebase.initializeApp(firebaseConfig);
@@ -20,9 +27,12 @@ function StateManager(onStateChange, onUserChange) {
         if (this.onUserChange) this.onUserChange(user);
 
         if (user) {
+            this.migrationInFlight = false;
+            this.migrationCompleted = false;
             this.subscribeToState(user.uid);
         } else {
             if (this.unsubscribeState) this.unsubscribeState();
+            this.clearPickListSubscription();
             this.state = null;
         }
     });
@@ -40,6 +50,8 @@ function StateManager(onStateChange, onUserChange) {
 StateManager.prototype.setCurrentUser = function (userId) {
     this.currentUserId = userId;
     localStorage.setItem('picking_shelf_user_id', userId);
+    const currentPickingNo = this.state?.userStates?.[this.currentUserId]?.currentPickingNo || null;
+    this.subscribeToPickList(currentPickingNo);
     if (this.state && this.onStateChange) this.onStateChange(this.state);
 };
 
@@ -329,6 +341,15 @@ StateManager.prototype._getStateDocPath = function (uid) {
     return `users/${resolvedUid}/states/current`;
 };
 
+StateManager.prototype._getPickListCollectionRef = function (uid) {
+    const resolvedUid = uid || this.user?.uid;
+    return this.db.collection("users").doc(resolvedUid).collection("pickLists");
+};
+
+StateManager.prototype._getPickListDocRef = function (uid, listId) {
+    return this._getPickListCollectionRef(uid).doc(String(listId));
+};
+
 StateManager.prototype._logFirestoreError = function (action, error, uid) {
     console.error(`[firestore:${action}] failed`, {
         uid: uid || this.user?.uid,
@@ -348,11 +369,16 @@ StateManager.prototype.subscribeToState = function (uid) {
     this.unsubscribeState = docRef.onSnapshot((doc) => {
         if (doc.exists) {
             const data = doc.data();
+            this._migrateLegacyPickListsIfNeeded(uid, data);
             // Migrate old state if needed
             if (!data.userStates) {
                 this.migrateToMultiUser(uid, data);
             } else {
                 this.state = data;
+                const currentPickingNo = data.userStates?.[this.currentUserId]?.currentPickingNo || null;
+                if (this.currentPickListId !== currentPickingNo) {
+                    this.subscribeToPickList(currentPickingNo);
+                }
                 this._reconcileLocalUiStateWithRemote(data);
                 if (this.onStateChange) this.onStateChange(this.state);
             }
@@ -362,6 +388,40 @@ StateManager.prototype.subscribeToState = function (uid) {
     }, (error) => {
         this._logFirestoreError('subscribeToState', error, uid);
     });
+};
+
+StateManager.prototype.subscribeToPickList = function (listId) {
+    if (!this.user) return;
+    const normalizedListId = listId ? String(listId) : null;
+    if (!normalizedListId) {
+        this.clearPickListSubscription();
+        return;
+    }
+    if (this.currentPickListId === normalizedListId && this.unsubscribePickList) return;
+    this.clearPickListSubscription();
+
+    this.currentPickListId = normalizedListId;
+    this.currentPickListLoading = true;
+    this.currentPickListNotFound = false;
+    const docRef = this._getPickListDocRef(this.user.uid, normalizedListId);
+    this.unsubscribePickList = docRef.onSnapshot((doc) => {
+        this.currentPickList = doc.exists ? (doc.data() || null) : null;
+        this.currentPickListLoading = false;
+        this.currentPickListNotFound = !doc.exists;
+        this._notifyUiOnlyChange();
+    }, (error) => {
+        this.currentPickListLoading = false;
+        console.error('[firestore:subscribeToPickList] failed', error);
+    });
+};
+
+StateManager.prototype.clearPickListSubscription = function () {
+    if (this.unsubscribePickList) this.unsubscribePickList();
+    this.unsubscribePickList = null;
+    this.currentPickList = null;
+    this.currentPickListId = null;
+    this.currentPickListLoading = false;
+    this.currentPickListNotFound = false;
 };
 
 StateManager.prototype.migrateToMultiUser = function (uid, oldData) {
@@ -388,6 +448,44 @@ StateManager.prototype.migrateToMultiUser = function (uid, oldData) {
     return this._getStateDocRef(uid).update(updates).catch((error) => {
         this._logFirestoreError('migrateToMultiUser', error, uid);
         throw error;
+    });
+};
+
+StateManager.prototype._buildJanIndexFromSlots = function (slots) {
+    const janIndex = {};
+    Object.entries(slots || {}).forEach(([slotKey, slot]) => {
+        const skus = slot?.skus || (slot?.sku ? [slot.sku] : []);
+        skus.forEach((jan) => {
+            if (jan) janIndex[String(jan)] = slotKey;
+        });
+    });
+    return janIndex;
+};
+
+StateManager.prototype._migrateLegacyPickListsIfNeeded = function (uid, data) {
+    if (this.migrationCompleted || this.migrationInFlight) return;
+    const legacyPickLists = data?.pickLists;
+    const needsJanIndex = !data?.janIndex;
+    if (!legacyPickLists && !needsJanIndex) return;
+    this.migrationInFlight = true;
+
+    const docRef = this._getStateDocRef(uid);
+    const updates = {
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    const entries = Object.entries(legacyPickLists || {});
+
+    this._writePickListEntriesInChunks(uid, entries).then(async () => {
+        if (legacyPickLists) updates.pickLists = firebase.firestore.FieldValue.delete();
+        if (needsJanIndex) {
+            updates.janIndex = this._buildJanIndexFromSlots(data?.slots || {});
+        }
+        await docRef.update(updates);
+        this.migrationCompleted = true;
+    }).catch((error) => {
+        this._logFirestoreError('_migrateLegacyPickListsIfNeeded', error, uid);
+    }).finally(() => {
+        this.migrationInFlight = false;
     });
 };
 
@@ -421,7 +519,7 @@ StateManager.prototype.initializeNewSession = function (uid) {
         slots: {},
         splits,
         injectList: {},
-        pickLists: {},
+        janIndex: {},
         userStates: {
             user1: { activePick: {}, currentPickingNo: null, injectPending: null },
             user2: { activePick: {}, currentPickingNo: null, injectPending: null },
@@ -456,6 +554,66 @@ StateManager.prototype.update = function (updates) {
         this._logFirestoreError('update', error, uid);
         throw error;
     });
+};
+
+StateManager.prototype._getBatchChunkSize = function () {
+    return 450;
+};
+
+StateManager.prototype._writePickListEntriesInChunks = async function (uid, entries) {
+    if (!entries || entries.length === 0) return;
+    const chunkSize = this._getBatchChunkSize();
+    for (let i = 0; i < entries.length; i += chunkSize) {
+        const chunk = entries.slice(i, i + chunkSize);
+        const batch = this.db.batch();
+        chunk.forEach(([listId, lines]) => {
+            batch.set(this._getPickListDocRef(uid, listId), {
+                lines: Array.isArray(lines) ? lines : [],
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        });
+        await batch.commit();
+    }
+};
+
+StateManager.prototype._deleteAllPickListDocs = async function (uid) {
+    const chunkSize = this._getBatchChunkSize();
+    while (true) {
+        const snapshot = await this._getPickListCollectionRef(uid).limit(chunkSize).get();
+        if (snapshot.empty) break;
+        const batch = this.db.batch();
+        snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+        await batch.commit();
+        if (snapshot.size < chunkSize) break;
+    }
+};
+
+StateManager.prototype.replaceAllPickLists = async function (groupedPick) {
+    if (!this.user) return Promise.reject("Not authenticated");
+    const uid = this.user.uid;
+    await this._deleteAllPickListDocs(uid);
+    const entries = Object.entries(groupedPick || {});
+    await this._writePickListEntriesInChunks(uid, entries);
+};
+
+StateManager.prototype.loadPickList = async function (listId) {
+    if (!this.user || !listId) return null;
+    this.currentPickListLoading = true;
+    this.currentPickListNotFound = false;
+    const doc = await this._getPickListDocRef(this.user.uid, listId).get();
+    if (!doc.exists) {
+        this.currentPickList = null;
+        this.currentPickListId = null;
+        this.currentPickListLoading = false;
+        this.currentPickListNotFound = true;
+        return null;
+    }
+    const pickListData = doc.data() || null;
+    this.currentPickList = pickListData;
+    this.currentPickListLoading = false;
+    this.currentPickListNotFound = false;
+    this.subscribeToPickList(listId);
+    return pickListData;
 };
 
 StateManager.prototype._hasActiveSkuInSlot = function (slotData) {
@@ -520,16 +678,31 @@ StateManager.prototype.applyBulkSplitCount = function (targetSplit) {
     });
 };
 
-StateManager.prototype._applyResetLogic = function (userId, data, updates) {
+StateManager.prototype._applyResetLogic = async function (userId, uid, data, updates, transaction) {
     const userState = data.userStates?.[userId];
     if (!userState) return;
 
     const oldListId = userState.currentPickingNo;
-    if (oldListId && data.pickLists?.[oldListId]) {
-        const lines = data.pickLists[oldListId];
-        const allDone = lines.length > 0 && lines.every(l => l.status === 'DONE');
-        if (!allDone) {
-            updates[`pickLists.${oldListId}`] = lines.map(l => ({ ...l, status: 'PENDING' }));
+    if (oldListId) {
+        const pickListRef = this._getPickListDocRef(uid, oldListId);
+        const pickListDoc = transaction ? await transaction.get(pickListRef) : await pickListRef.get();
+        if (pickListDoc.exists) {
+            const lines = pickListDoc.data()?.lines || [];
+            const allDone = lines.length > 0 && lines.every(l => l.status === 'DONE');
+            if (!allDone) {
+                const nextLines = lines.map(l => ({ ...l, status: 'PENDING' }));
+                if (transaction) {
+                    transaction.update(pickListRef, {
+                        lines: nextLines,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                } else {
+                    await pickListRef.update({
+                        lines: nextLines,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                }
+            }
         }
     }
     updates[`userStates.${userId}.currentPickingNo`] = null;
@@ -548,8 +721,10 @@ StateManager.prototype.resetUserPick = function (userId) {
             mode: 'INJECT',
             updatedAt: firebase.firestore.FieldValue.serverTimestamp() 
         };
-        this._applyResetLogic(userId, data, updates);
+        await this._applyResetLogic(userId, uid, data, updates, transaction);
         transaction.update(docRef, updates);
+    }).then(() => {
+        if (userId === this.currentUserId) this.clearPickListSubscription();
     }).catch((error) => {
         this._logFirestoreError('resetUserPick', error, uid);
         throw error;
@@ -569,10 +744,12 @@ StateManager.prototype.cancelAllPicks = function (extraUpdates = {}) {
             updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             ...extraUpdates
         };
-        Object.keys(data.userStates || {}).forEach(uId => {
-            this._applyResetLogic(uId, data, updates);
-        });
+        for (const uId of Object.keys(data.userStates || {})) {
+            await this._applyResetLogic(uId, uid, data, updates, transaction);
+        }
         transaction.update(docRef, updates);
+    }).then(() => {
+        this.clearPickListSubscription();
     }).catch((error) => {
         this._logFirestoreError('cancelAllPicks', error, uid);
         throw error;
@@ -674,7 +851,7 @@ StateManager.prototype.startPicking = function (listId, activePickData) {
         // Reset previous list for THIS user if it was different and incomplete
         const currentUserState = userStates[this.currentUserId];
         if (currentUserState && currentUserState.currentPickingNo !== listId) {
-            this._applyResetLogic(this.currentUserId, data, updates);
+            await this._applyResetLogic(this.currentUserId, uid, data, updates, transaction);
         }
 
         // Precedence Rule: If anyone else is picking THIS new list, remove it from them
@@ -691,6 +868,8 @@ StateManager.prototype.startPicking = function (listId, activePickData) {
         updates.mode = 'PICK';
 
         transaction.update(docRef, updates);
+    }).then(() => {
+        this.subscribeToPickList(listId);
     }).catch((error) => {
         this._logFirestoreError('startPicking', error, uid);
         throw error;
@@ -724,7 +903,7 @@ StateManager.prototype.resetPreserveConfig = function () {
         slots: {},
         splits,
         injectList: {},
-        pickLists: {},
+        janIndex: {},
         userStates: {
             user1: { activePick: {}, currentPickingNo: null, injectPending: null },
             user2: { activePick: {}, currentPickingNo: null, injectPending: null },
@@ -739,7 +918,9 @@ StateManager.prototype.resetPreserveConfig = function () {
     }
 
     const uid = this.user.uid;
-    return this._getStateDocRef(uid).set(nextState).catch((error) => {
+    return this._deleteAllPickListDocs(uid).then(() => this._getStateDocRef(uid).set(nextState)).then(() => {
+        this.clearPickListSubscription();
+    }).catch((error) => {
         this._logFirestoreError('resetPreserveConfig', error, uid);
         throw error;
     });
@@ -747,7 +928,68 @@ StateManager.prototype.resetPreserveConfig = function () {
 
 StateManager.prototype.reset = function () {
     if (!this.user) return Promise.reject("Not authenticated");
-    return this.initializeNewSession(this.user.uid);
+    const uid = this.user.uid;
+    return this._deleteAllPickListDocs(uid).then(() => this.initializeNewSession(uid)).then(() => {
+        this.clearPickListSubscription();
+    });
+};
+
+StateManager.prototype.completePickLine = function (listId, index) {
+    if (!this.user || !listId) return Promise.reject("Not authenticated");
+    const uid = this.user.uid;
+    return this.db.runTransaction(async (transaction) => {
+        const listRef = this._getPickListDocRef(uid, listId);
+        const stateRef = this._getStateDocRef(uid);
+        const [listDoc, stateDoc] = await Promise.all([transaction.get(listRef), transaction.get(stateRef)]);
+        if (!listDoc.exists || !stateDoc.exists) return;
+        const lines = [...(listDoc.data()?.lines || [])];
+        if (!lines[index] || lines[index].status === 'DONE') return;
+        lines[index] = { ...lines[index], status: 'DONE' };
+        transaction.update(listRef, {
+            lines,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        const data = stateDoc.data() || {};
+        const janIndex = data.janIndex || {};
+        const activePick = this._buildActivePickFromLines(listId, lines, janIndex);
+        transaction.update(stateRef, {
+            [`userStates.${this.currentUserId}.activePick`]: activePick,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+    });
+};
+
+StateManager.prototype.completePickBySlot = function (listId, slotKey) {
+    if (!this.user || !listId) return Promise.reject("Not authenticated");
+    const uid = this.user.uid;
+    return this.db.runTransaction(async (transaction) => {
+        const listRef = this._getPickListDocRef(uid, listId);
+        const stateRef = this._getStateDocRef(uid);
+        const [listDoc, stateDoc] = await Promise.all([transaction.get(listRef), transaction.get(stateRef)]);
+        if (!listDoc.exists || !stateDoc.exists) return;
+        const data = stateDoc.data() || {};
+        const janIndex = data.janIndex || {};
+        const lines = [...(listDoc.data()?.lines || [])];
+        let changed = false;
+        const nextLines = lines.map((line) => {
+            if (line.status === 'DONE') return line;
+            const lineSlotKey = janIndex?.[line.jan] || 'UNALLOCATED';
+            if (lineSlotKey !== slotKey) return line;
+            changed = true;
+            return { ...line, status: 'DONE' };
+        });
+        if (!changed) return;
+        transaction.update(listRef, {
+            lines: nextLines,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        const activePick = this._buildActivePickFromLines(listId, nextLines, janIndex);
+        transaction.update(stateRef, {
+            [`userStates.${this.currentUserId}.activePick`]: activePick,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+    });
 };
 
 // Login/Logout methods
@@ -763,23 +1005,11 @@ StateManager.prototype.logout = function () {
     return this.auth.signOut();
 };
 
-StateManager.prototype._rebuildActivePickForUser = function (userId, data, nextSlots) {
-    const userState = data.userStates?.[userId];
-    const listId = userState?.currentPickingNo;
-    if (!listId) return {};
-
-    const lines = data.pickLists?.[listId] || [];
+StateManager.prototype._buildActivePickFromLines = function (listId, lines, janIndex) {
     const activePick = {};
-
-    lines.forEach((line) => {
+    (lines || []).forEach((line) => {
         if (line.status === 'DONE') return;
-
-        const entry = Object.entries(nextSlots || {}).find(([, value]) => {
-            const skus = value?.skus || (value?.sku ? [value.sku] : []);
-            return skus.includes(line.jan);
-        });
-
-        const slotKey = entry ? entry[0] : 'UNALLOCATED';
+        const slotKey = janIndex?.[line.jan] || 'UNALLOCATED';
         if (!activePick[slotKey]) {
             activePick[slotKey] = {
                 totalQty: 0,
@@ -788,16 +1018,22 @@ StateManager.prototype._rebuildActivePickForUser = function (userId, data, nextS
                 pickNo: listId
             };
         }
-
         activePick[slotKey].totalQty += line.qty;
         activePick[slotKey].pendingQty += line.qty;
-
         if (!activePick[slotKey].skus.includes(line.jan)) {
             activePick[slotKey].skus.push(line.jan);
         }
     });
-
     return activePick;
+};
+
+StateManager.prototype._rebuildActivePickForUser = async function (userId, data, nextJanIndex) {
+    const userState = data.userStates?.[userId];
+    const listId = userState?.currentPickingNo;
+    if (!listId || !this.user) return {};
+    const pickListDoc = await this._getPickListDocRef(this.user.uid, listId).get();
+    const lines = pickListDoc.exists ? (pickListDoc.data()?.lines || []) : [];
+    return this._buildActivePickFromLines(listId, lines, nextJanIndex || data.janIndex || {});
 };
 
 StateManager.prototype.selectSlot = function (bayId, subId) {
@@ -849,10 +1085,19 @@ StateManager.prototype.selectSlot = function (bayId, subId) {
                 }
 
                 nextSlots[slotKey] = { skus: skus };
-                const rebuiltActivePick = this._rebuildActivePickForUser(this.currentUserId, data, nextSlots);
+                const janIndex = data.janIndex || {};
+                const nextJanIndex = { ...janIndex, [pendingJan]: slotKey };
+                const listId = data.userStates?.[this.currentUserId]?.currentPickingNo;
+                let currentLines = [];
+                if (listId) {
+                    const pickListDoc = await transaction.get(this._getPickListDocRef(uid, listId));
+                    currentLines = pickListDoc.exists ? (pickListDoc.data()?.lines || []) : [];
+                }
+                const rebuiltActivePick = this._buildActivePickFromLines(listId, currentLines, nextJanIndex);
 
                 transaction.update(docRef, {
                     slots: nextSlots,
+                    janIndex: nextJanIndex,
                     [`userStates.${this.currentUserId}.activePick`]: rebuiltActivePick,
                     [`userStates.${this.currentUserId}.injectPending`]: null,
                     [`userStates.${this.currentUserId}.injectPendingCancelled`]: null,
@@ -915,9 +1160,23 @@ StateManager.prototype.unassignSlot = function (slotKey, targetJan) {
                 newSlots[slotKey] = { skus: skus };
             }
             
-            const rebuiltActivePick = this._rebuildActivePickForUser(this.currentUserId, data, newSlots);
+            const nextJanIndex = { ...(data.janIndex || {}) };
+            if (targetJan) {
+                delete nextJanIndex[targetJan];
+            } else {
+                const removedSkus = currentSlot.skus || (currentSlot.sku ? [currentSlot.sku] : []);
+                removedSkus.forEach((jan) => delete nextJanIndex[jan]);
+            }
+            const listId = data.userStates?.[this.currentUserId]?.currentPickingNo;
+            let currentLines = [];
+            if (listId) {
+                const pickListDoc = await transaction.get(this._getPickListDocRef(uid, listId));
+                currentLines = pickListDoc.exists ? (pickListDoc.data()?.lines || []) : [];
+            }
+            const rebuiltActivePick = this._buildActivePickFromLines(listId, currentLines, nextJanIndex);
             transaction.update(docRef, {
                 slots: newSlots,
+                janIndex: nextJanIndex,
                 [`userStates.${this.currentUserId}.activePick`]: rebuiltActivePick,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             });
@@ -952,9 +1211,22 @@ StateManager.prototype.resetBay = function (bayId) {
                 }
             });
             if (changed) {
+                const nextJanIndex = { ...(data.janIndex || {}) };
+                Object.entries(data.slots || {}).forEach(([key, slot]) => {
+                    if (!key.startsWith(`${bayId}-`)) return;
+                    const skus = slot?.skus || (slot?.sku ? [slot.sku] : []);
+                    skus.forEach((jan) => delete nextJanIndex[jan]);
+                });
+                const listId = data.userStates?.[this.currentUserId]?.currentPickingNo;
+                let currentLines = [];
+                if (listId) {
+                    const pickListDoc = await transaction.get(this._getPickListDocRef(uid, listId));
+                    currentLines = pickListDoc.exists ? (pickListDoc.data()?.lines || []) : [];
+                }
                 updates.slots = newSlots;
+                updates.janIndex = nextJanIndex;
                 updates[`userStates.${this.currentUserId}.activePick`] =
-                    this._rebuildActivePickForUser(this.currentUserId, data, newSlots);
+                    this._buildActivePickFromLines(listId, currentLines, nextJanIndex);
             }
         }
         

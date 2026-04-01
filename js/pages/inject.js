@@ -126,17 +126,6 @@
             return result.map(v => v.trim());
         }
 
-        const buildJanToSlotMap = (slots) => {
-            const janToSlot = {};
-            Object.entries(slots || {}).forEach(([slotKey, slot]) => {
-                const skus = slot.skus || (slot.sku ? [slot.sku] : []);
-                skus.forEach((jan) => {
-                    janToSlot[jan] = slotKey;
-                });
-            });
-            return janToSlot;
-        };
-
         const getMergedSlots = (state) => {
             const baseSlots = { ...(state.slots || {}) };
             const optimisticSlots = stateMgr.localUiState.optimisticSlots || {};
@@ -145,6 +134,18 @@
                 baseSlots[slotKey] = { skus: [...(optimisticSlot.skus || [])] };
             });
             return baseSlots;
+        };
+
+        const getMergedJanIndex = (state) => {
+            const base = { ...(state.janIndex || {}) };
+            const optimisticSlots = stateMgr.localUiState.optimisticSlots || {};
+            Object.entries(optimisticSlots).forEach(([slotKey, slot]) => {
+                const skus = slot?.skus || [];
+                skus.forEach((jan) => {
+                    base[jan] = slotKey;
+                });
+            });
+            return base;
         };
 
         const isJanAssignedSomewhere = (state, jan) => {
@@ -484,10 +485,7 @@
                 groupedPick[pickNo].push({ jan, qty, status: 'PENDING' });
             });
 
-            const updates = {
-                injectList: aggregatedInject,
-                pickLists: groupedPick
-            };
+            const updates = { injectList: aggregatedInject };
             const currentSplits = stateMgr.state?.splits || {};
             const newSplits = { ...currentSplits };
             let needInit = false;
@@ -501,6 +499,7 @@
             if (needInit) updates.splits = newSplits;
 
             try {
+                await stateMgr.replaceAllPickLists(groupedPick);
                 await stateMgr.update(updates);
                 alert(`${Object.keys(aggregatedInject).length} 品目のデータを読み込みました。\nピッキングリスト: ${Object.keys(groupedPick).length} 件`);
             } catch (e) {
@@ -570,7 +569,7 @@
                 AudioManager.playErrorSound();
                 showMessage(`❌ SKU ${jan} はリストにありません`, 'error');
             } else {
-                const janToSlot = buildJanToSlotMap(getMergedSlots(state));
+                const janToSlot = getMergedJanIndex(state);
                 const assignedSlotKey = janToSlot[jan];
                 const alreadyInSlot = !!assignedSlotKey;
 
