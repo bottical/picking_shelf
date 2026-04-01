@@ -105,7 +105,7 @@
                     <td style="padding:1rem; font-weight:600;">...${line.jan.slice(-4)}</td>
                     <td style="padding:1rem; font-size:1.25rem; font-weight:800;">${line.qty}</td>
                     <td style="padding:1rem;">
-                        <span style="padding:0.25rem 0.75rem; border-radius:4px; font-weight:800; color:white; background:${subId ? `hsl(${(subId - 1) * 60 + 200}, 70%, 50%)` : '#eab308'}">
+                        <span style="padding:0.25rem 0.75rem; border-radius:4px; font-weight:800; font-size:1.5rem; color:white; background:${subId ? `hsl(${(subId - 1) * 60 + 200}, 70%, 50%)` : '#eab308'}">
                             ${location}
                         </span>
                     </td>
