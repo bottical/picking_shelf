@@ -31,46 +31,22 @@
             }
         };
 
-        const loadList = (id) => {
-            if (!stateMgr.state.pickLists?.[id]) {
-                AudioManager.playErrorSound();
-                listIdInput.value = '';
-                currentListTitle.innerHTML = `<span style="color: var(--danger);">エラー：見つかりません (${id})</span>`;
-                pickTable.innerHTML = `<tr><td colspan="5" style="padding:3rem; text-align:center; color:var(--danger); font-size:1.2rem; font-weight:bold;">入力されたピッキングNo.「${id}」が存在しません。</td></tr>`;
-                return;
+        const loadList = async (id) => {
+            const pickList = await stateMgr.loadPickList(id);
+            if (!pickList) {
+                    AudioManager.playErrorSound();
+                    listIdInput.value = '';
+                    currentListTitle.innerHTML = `<span style="color: var(--danger);">エラー：見つかりません (${id})</span>`;
+                    pickTable.innerHTML = `<tr><td colspan="5" style="padding:3rem; text-align:center; color:var(--danger); font-size:1.2rem; font-weight:bold;">入力されたピッキングNo.「${id}」が存在しません。</td></tr>`;
+                    return;
             }
             listIdInput.value = '';
-
-            const lines = stateMgr.state.pickLists[id];
-            
+            const lines = pickList?.lines || [];
+            const janIndex = stateMgr.state?.janIndex || {};
+            const newActivePick = stateMgr._buildActivePickFromLines(id, lines, janIndex);
             const allCompleted = lines.length > 0 && lines.every(l => l.status === 'DONE');
-            if (allCompleted) {
-                AudioManager.playErrorSound();
-            } else {
-                AudioManager.playStartSound();
-            }
-
-            const newActivePick = {};
-            lines.forEach(line => {
-                if (line.status === 'DONE') return;
-                const entry = Object.entries(stateMgr.state.slots || {}).find(([k, v]) => {
-                    const skus = v.skus || (v.sku ? [v.sku] : []);
-                    return skus.includes(line.jan);
-                });
-                
-                const slotKey = entry ? entry[0] : 'UNALLOCATED';
-                if (!newActivePick[slotKey]) {
-                    newActivePick[slotKey] = { totalQty: 0, pendingQty: 0, skus: [], pickNo: id };
-                }
-                newActivePick[slotKey].totalQty += line.qty;
-                if (line.status !== 'DONE') {
-                    newActivePick[slotKey].pendingQty += line.qty;
-                }
-                if (!newActivePick[slotKey].skus.includes(line.jan)) {
-                    newActivePick[slotKey].skus.push(line.jan);
-                }
-            });
-
+            if (allCompleted) AudioManager.playErrorSound();
+            else AudioManager.playStartSound();
             stateMgr.startPicking(id, newActivePick);
         };
 
@@ -80,16 +56,28 @@
             const currentPickingNo = currentUserState.currentPickingNo;
 
             pickTable.innerHTML = '';
-            if (!currentPickingNo || !state.pickLists?.[currentPickingNo]) {
+            const currentPickLines = stateMgr.currentPickList?.lines || null;
+            if (!currentPickingNo) {
                 lastRenderedPickingNo = currentPickingNo || null;
                 lastRenderedAllCompleted = false;
-                const msg = !currentPickingNo ? "ピッキングNo.を入力してください" : "データが見つかりません";
+                const msg = "ピッキングNo.を入力してください";
                 pickTable.innerHTML = `<tr><td colspan="5" style="padding:3rem; text-align:center; color:var(--text-muted);">${msg}</td></tr>`;
                 currentListTitle.textContent = `ピッキングNo.を入力してください`;
                 return;
             }
+            if (stateMgr.currentPickListLoading) {
+                pickTable.innerHTML = `<tr><td colspan="5" style="padding:3rem; text-align:center; color:var(--text-muted);">読込中...</td></tr>`;
+                currentListTitle.textContent = `ピッキングNo. ${currentPickingNo} を読込中...`;
+                return;
+            }
+            if (!currentPickLines) {
+                const msg = stateMgr.currentPickListNotFound ? "データが見つかりません" : "読込中...";
+                pickTable.innerHTML = `<tr><td colspan="5" style="padding:3rem; text-align:center; color:var(--text-muted);">${msg}</td></tr>`;
+                currentListTitle.textContent = `ピッキングNo. ${currentPickingNo}`;
+                return;
+            }
 
-            const lines = state.pickLists[currentPickingNo];
+            const lines = currentPickLines;
             const allCompleted = lines.length > 0 && lines.every(l => l.status === 'DONE');
             if (
                 lastRenderedPickingNo === currentPickingNo &&
@@ -106,12 +94,8 @@
             lastRenderedPickingNo = currentPickingNo;
             lastRenderedAllCompleted = allCompleted;
             lines.forEach((line, idx) => {
-                const entry = Object.entries(state.slots || {}).find(([k, v]) => {
-                    const skus = v.skus || (v.sku ? [v.sku] : []);
-                    return skus.includes(line.jan);
-                });
-                const location = entry ? entry[0] : "その他";
-                const subId = entry ? location.split('-')[1] : null;
+                const location = state.janIndex?.[line.jan] || "その他";
+                const subId = location.includes('-') ? location.split('-')[1] : null;
 
                 const tr = document.createElement('tr');
                 tr.style.opacity = line.status === 'DONE' ? 0.5 : 1;
@@ -121,7 +105,7 @@
                     <td style="padding:1rem; font-weight:600;">...${line.jan.slice(-4)}</td>
                     <td style="padding:1rem; font-size:1.25rem; font-weight:800;">${line.qty}</td>
                     <td style="padding:1rem;">
-                        <span style="padding:0.25rem 0.75rem; border-radius:4px; font-weight:800; color:white; background:${entry ? `hsl(${(subId - 1) * 60 + 200}, 70%, 50%)` : '#eab308'}">
+                        <span style="padding:0.25rem 0.75rem; border-radius:4px; font-weight:800; color:white; background:${subId ? `hsl(${(subId - 1) * 60 + 200}, 70%, 50%)` : '#eab308'}">
                             ${location}
                         </span>
                     </td>
@@ -152,43 +136,7 @@
             const currentPickingNo = currentUserState?.currentPickingNo;
             if (!currentPickingNo) return;
             
-            const lines = [...stateMgr.state.pickLists[currentPickingNo]];
-            const line = lines[index];
-            if (line.status === 'DONE') return;
-
-            line.status = 'DONE';
-
-            const updates = {
-                [`pickLists.${currentPickingNo}`]: lines
-            };
-
-            const allDone = lines.every(l => l.status === 'DONE');
-
-            if (allDone) {
-                updates[`userStates.${stateMgr.currentUserId}.activePick`] = {};
-            } else {
-                const newActivePick = {};
-                lines.forEach(l => {
-                    const entry = Object.entries(stateMgr.state.slots || {}).find(([k, v]) => {
-                        const skus = v.skus || (v.sku ? [v.sku] : []);
-                        return skus.includes(l.jan);
-                    });
-                    const slotKey = entry ? entry[0] : 'UNALLOCATED';
-                    if (!newActivePick[slotKey]) {
-                        newActivePick[slotKey] = { totalQty: 0, pendingQty: 0, skus: [], pickNo: currentPickingNo };
-                    }
-                    newActivePick[slotKey].totalQty += l.qty;
-                    if (l.status !== 'DONE') {
-                        newActivePick[slotKey].pendingQty += l.qty;
-                    }
-                    if (!newActivePick[slotKey].skus.includes(l.jan)) {
-                        newActivePick[slotKey].skus.push(l.jan);
-                    }
-                });
-                updates[`userStates.${stateMgr.currentUserId}.activePick`] = newActivePick;
-            }
-
-            stateMgr.update(updates);
+            stateMgr.completePickLine(currentPickingNo, Number(index));
         };
 
         // UI Event Listeners
