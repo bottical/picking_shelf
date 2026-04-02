@@ -280,6 +280,21 @@ StateManager.prototype.clearOptimisticPickCompletion = function (slotKey, opId) 
     this._notifyUiOnlyChange();
 };
 
+StateManager.prototype.clearOptimisticPickCompletions = function (listId = null) {
+    const completions = this.localUiState.optimisticPickCompletions || {};
+    const allKeys = Object.keys(completions);
+    if (!allKeys.length) return;
+
+    let changed = false;
+    allKeys.forEach((slotKey) => {
+        if (listId && String(completions[slotKey]?.listId) !== String(listId)) return;
+        delete completions[slotKey];
+        changed = true;
+    });
+
+    if (changed) this._notifyUiOnlyChange();
+};
+
 StateManager.prototype.isOptimisticPickCompletionActive = function (slotKey, state) {
     if (!slotKey) return false;
     const completion = this.localUiState.optimisticPickCompletions?.[slotKey];
@@ -891,6 +906,7 @@ StateManager.prototype._applyResetLogic = async function (userId, uid, data, upd
 StateManager.prototype.resetUserPick = function (userId) {
     if (!this.user || !this.state) return Promise.reject("Not authenticated");
     const uid = this.user.uid;
+    const oldListId = this.state?.userStates?.[userId]?.currentPickingNo || null;
     return this.db.runTransaction(async (transaction) => {
         const docRef = this._getStateDocRef(uid);
         const doc = await transaction.get(docRef);
@@ -904,6 +920,8 @@ StateManager.prototype.resetUserPick = function (userId) {
         transaction.update(docRef, updates);
     }).then(() => {
         if (userId === this.currentUserId) this.clearPickListSubscription();
+        this.clearOptimisticPickCompletions(oldListId);
+        this.clearTransientWallError();
     }).catch((error) => {
         this._logFirestoreError('resetUserPick', error, uid);
         throw error;
@@ -929,6 +947,8 @@ StateManager.prototype.cancelAllPicks = function (extraUpdates = {}) {
         transaction.update(docRef, updates);
     }).then(() => {
         this.clearPickListSubscription();
+        this.clearOptimisticPickCompletions();
+        this.clearTransientWallError();
     }).catch((error) => {
         this._logFirestoreError('cancelAllPicks', error, uid);
         throw error;
