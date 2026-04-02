@@ -317,6 +317,17 @@
             return stateMgr.localUiState.optimisticSlots?.[slotKey]?._meta || null;
         };
 
+        const getOptimisticPickCompletion = (slotKey, state) => {
+            const completion = stateMgr.localUiState.optimisticPickCompletions?.[slotKey] || null;
+            if (!completion) return null;
+            const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
+            const activeListId = currentUserState.currentPickingNo || null;
+            if (!activeListId || String(activeListId) !== String(completion.listId)) return null;
+            return completion;
+        };
+
+        const isPickProcessing = (slotKey, state) => !!getOptimisticPickCompletion(slotKey, state);
+
         const getActiveDuplicateHighlight = (state) => {
             return stateMgr.getActiveDuplicateHighlightForUser(state, stateMgr.currentUserId);
         };
@@ -511,11 +522,23 @@
             document.body.appendChild(overlay);
         };
 
-        const markSlotDone = (slotKey, state, stateMgr) => {
+        const markSlotDone = async (slotKey, state, stateMgr) => {
             const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
             const listId = currentUserState.currentPickingNo;
             if (!listId) return;
-            stateMgr.completePickBySlot(listId, slotKey);
+            if (stateMgr.isOptimisticPickCompletionActive(slotKey, state)) return;
+            const opId = stateMgr.setOptimisticPickCompletion(slotKey, listId);
+            if (!opId) return;
+            AudioManager.playStartSound();
+            try {
+                await stateMgr.completePickBySlot(listId, slotKey);
+                stateMgr.markOptimisticPickCompletionCommitted(slotKey, opId);
+            } catch (error) {
+                console.error('ピッキング完了処理に失敗しました:', error);
+                stateMgr.clearOptimisticPickCompletion(slotKey, opId);
+                stateMgr.setTransientWallError(slotKey, '通信失敗。もう一度タップしてください');
+                AudioManager.playErrorSound();
+            }
         };
 
         const getIndicators = (state, slotKey) => {
@@ -617,6 +640,8 @@
                 const indicators = getIndicators(state, slotKey);
                 const myPickData = myActivePick[slotKey];
                 const isTargetForMe = myPickData && myPickData.pendingQty > 0;
+                const processingPickCompletion = getOptimisticPickCompletion(slotKey, state);
+                const isPickCompletionProcessing = !!processingPickCompletion;
                 const isDuplicateTargetSlot = duplicateHighlight?.slotKey === slotKey;
                 const shouldGrayOutByPick = isUserPickingAnywhere && !isTargetForMe;
                 const shouldGrayOutByDuplicate = isDuplicateFocusActive && !isDuplicateTargetSlot;
@@ -628,7 +653,7 @@
                 if (optimisticMeta?.status === 'pending') block.classList.add('optimistic-pending');
                 if (optimisticMeta?.status === 'committed') block.classList.add('optimistic-committed');
                 if (duplicateHighlight?.slotKey === slotKey) block.classList.add('wall-duplicate-highlight');
-                if (shouldGrayOutByPick || shouldGrayOutByDuplicate) {
+                if (!isPickCompletionProcessing && (shouldGrayOutByPick || shouldGrayOutByDuplicate)) {
                     block.classList.add('grayed-out');
                 }
 
@@ -648,7 +673,18 @@
                 const slotPickColor = isMultiSkuSlot ? multiSkuColor : normalPickColor;
                 if (isMultiSkuSlot) block.classList.add('multi-sku-slot');
 
-                if (indicators.length > 0) {
+                if (isPickCompletionProcessing) {
+                    block.classList.add('pick-processing');
+                    const processingQty = myPickData?.pendingQty || myPickData?.totalQty || 0;
+                    const processingSkuCount = targetSkuCount || skus.length || 0;
+                    const processingLabel = processingSkuCount > 0
+                        ? `処理中 ${processingSkuCount} SKU`
+                        : '処理中';
+                    renderPickBlock(block, processingLabel, processingQty > 0 ? `${processingQty}` : '...');
+                    block.style.setProperty('--pick-color', slotPickColor);
+                    block.style.cursor = 'wait';
+                    block.onclick = null;
+                } else if (indicators.length > 0) {
                     const myInd = indicators.find(ind => ind.isMe);
                     if (myInd && myInd.type === 'PICK') {
                         block.classList.add('picking');
@@ -662,10 +698,10 @@
                             const pickLabel = skus.length === 1 ? formatJanLast4(skus[0]) : (denseEnabled ? `${targetSkuCount} SKU` : `対象: ${targetSkuCount} SKU`);
                             renderStackedBlock(block, pickLabel, `${myPickData.pendingQty}`);
                         }
-                        block.onclick = (e) => {
+                        block.onclick = async (e) => {
                             e.stopPropagation();
                             clearDuplicateHighlightIfMatched(slotKey);
-                            markSlotDone(slotKey, state, stateMgr);
+                            await markSlotDone(slotKey, state, stateMgr);
                         };
                     } else {
                         // Show multi-user indicators
@@ -823,11 +859,16 @@
             const isTargetForMe = myPick && myPick.qty > 0;
             const isAnyPick = indicators.length > 0;
             const isDone = myPick && myPick.qty === 0;
+            const unallocatedProcessing = isPickProcessing('UNALLOCATED', state);
 
             const shouldGrayOutByDuplicate = !!duplicateHighlight?.slotKey && duplicateHighlight.slotKey !== 'UNALLOCATED';
-            const blackoutClass = ((isUserPickingAnywhere && !isTargetForMe) || shouldGrayOutByDuplicate) ? 'grayed-out' : '';
-            const bgColor = myPick ? (isDone ? '#000000' : '#ca8a04') : (isAnyPick ? '#334155' : '#1e293b');
-            const borderColor = isAnyPick ? '#eab308' : '#334155';
+            const blackoutClass = unallocatedProcessing
+                ? ''
+                : (((isUserPickingAnywhere && !isTargetForMe) || shouldGrayOutByDuplicate) ? 'grayed-out' : '');
+            const bgColor = unallocatedProcessing
+                ? '#334155'
+                : (myPick ? (isDone ? '#000000' : '#ca8a04') : (isAnyPick ? '#334155' : '#1e293b'));
+            const borderColor = unallocatedProcessing ? '#94a3b8' : (isAnyPick ? '#eab308' : '#334155');
 
             bay10Container.innerHTML = `
                 <div class="mobile-screen ${blackoutClass}" style="flex-direction: row; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border: 1px solid ${borderColor}; border-radius: 6px; background: ${bgColor}; color: white; position: relative;">
@@ -836,7 +877,9 @@
                         <span style="font-size: 1.1rem; font-weight: 800;">その他（未割り当て）</span>
                     </div>
                     <div style="display: flex; align-items: baseline; gap: 6px;">
-                        ${myPick ? `<span style="font-size: 1rem; font-weight: 800; background: ${isDone ? 'transparent' : '#fef08a'}; border: ${isDone ? '2px solid #ca8a04' : 'none'}; color: ${isDone ? '#ca8a04' : '#854d0e'}; padding: 2px 8px; border-radius: 12px; margin-right: 4px;">${isDone ? '完了' : 'PICK対象'}</span>` : ''}
+                        ${unallocatedProcessing
+                            ? '<span style="font-size: 1rem; font-weight: 800; background: rgba(148, 163, 184, 0.25); border: 2px solid #94a3b8; color: #e2e8f0; padding: 2px 8px; border-radius: 12px; margin-right: 4px;">処理中</span>'
+                            : (myPick ? `<span style="font-size: 1rem; font-weight: 800; background: ${isDone ? 'transparent' : '#fef08a'}; border: ${isDone ? '2px solid #ca8a04' : 'none'}; color: ${isDone ? '#ca8a04' : '#854d0e'}; padding: 2px 8px; border-radius: 12px; margin-right: 4px;">${isDone ? '完了' : 'PICK対象'}</span>` : '')}
                         <span style="color: ${isAnyPick ? 'white' : '#f59e0b'}; font-size: 2rem; font-weight: 800; line-height: 1;">${unallocatedCount}</span>
                         <span style="color: #94a3b8; font-size: 0.8rem; font-weight: 800;">SKU</span>
                     </div>
@@ -848,10 +891,11 @@
             const bay10Screen = bay10Container.querySelector('.mobile-screen');
             if (bay10Screen) {
                 bay10Screen.style.cursor = 'pointer';
-                bay10Screen.onclick = (e) => {
+                bay10Screen.onclick = async (e) => {
                     e.stopPropagation();
+                    if (unallocatedProcessing) return;
                     if (myPick && myPick.qty > 0) {
-                        markSlotDone('UNALLOCATED', state, stateMgr);
+                        await markSlotDone('UNALLOCATED', state, stateMgr);
                     } else {
                         showUnallocatedSkusModal(state);
                     }
@@ -893,6 +937,7 @@
             const myPickIndicator = indicators.find(ind => ind.isMe);
             const isTargetForMe = hasPending || Boolean(myPickIndicator && myPickIndicator.qty > 0);
             const duplicateHighlight = getActiveDuplicateHighlight(state);
+            const unallocatedProcessing = isPickProcessing('UNALLOCATED', state);
             const shouldGrayOutByDuplicate = !!duplicateHighlight?.slotKey && duplicateHighlight.slotKey !== 'UNALLOCATED';
 
             const body = document.createElement('div');
@@ -900,11 +945,19 @@
 
             const block = document.createElement('div');
             block.className = 'block';
-            if ((isUserPickingAnywhere && !isTargetForMe) || shouldGrayOutByDuplicate) {
+            if (!unallocatedProcessing && ((isUserPickingAnywhere && !isTargetForMe) || shouldGrayOutByDuplicate)) {
                 block.classList.add('grayed-out');
             }
 
-            if (isPickContext) {
+            if (unallocatedProcessing) {
+                block.classList.add('pick-processing');
+                block.style.flexDirection = 'column';
+                block.innerHTML = `
+                    <div style="font-size: 0.5em; font-weight: 800; opacity: 0.95; line-height: 1; padding-bottom: 4px;">処理中</div>
+                    <div style="line-height: 1; font-weight: 900;">${displayQty} 個</div>
+                `;
+                block.style.setProperty('--pick-color', '#94a3b8');
+            } else if (isPickContext) {
                 block.style.flexDirection = 'column';
                 if (hasPending) {
                     block.classList.add('picking');
@@ -913,9 +966,9 @@
                         <div style="line-height: 1; font-weight: 900;">${displayQty} 個</div>
                     `;
                     block.style.setProperty('--pick-color', '#eab308');
-                    block.onclick = (e) => {
+                    block.onclick = async (e) => {
                         e.stopPropagation();
-                        markSlotDone('UNALLOCATED', state, stateMgr);
+                        await markSlotDone('UNALLOCATED', state, stateMgr);
                     };
                 } else {
                     block.classList.add('picking-done');
@@ -978,6 +1031,7 @@
             if (!banner) return;
 
             const inject = stateMgr.getEffectiveInjectPendingForCurrentUser(state);
+            const wallError = stateMgr.getTransientWallError();
             const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
             const firestorePending = currentUserState.injectPending;
             const firestorePendingRequestId = firestorePending?.requestId || null;
@@ -1000,7 +1054,11 @@
                 firestorePending.status === 'WAITING_SLOT' &&
                 inject.status === 'WAITING_SLOT';
 
-            if (isWaitingUi) {
+            if (wallError?.message) {
+                banner.className = 'instruction-banner inject-warning';
+                banner.innerHTML = `<span>⚠️ ${wallError.message}</span>`;
+                banner.classList.remove('hidden');
+            } else if (isWaitingUi) {
                 const uIdx = stateMgr.currentUserId.slice(-1);
                 banner.className = `instruction-banner user-bg-${uIdx}`;
                 banner.innerHTML = `
