@@ -43,6 +43,8 @@ function StateManager(onStateChange, onUserChange) {
         injectPendingPreview: null,
         cancelledInjectRequestIds: {},
         optimisticSlots: {},
+        optimisticPickCompletions: {},
+        transientWallError: null,
         lastOpSeq: 0
     };
 }
@@ -234,6 +236,90 @@ StateManager.prototype.createInjectRequestId = function () {
     return `inject-req-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 };
 
+StateManager.prototype.createPickCompletionOpId = function () {
+    return `pick-complete-op-${Date.now()}-${++this.localUiState.lastOpSeq}`;
+};
+
+StateManager.prototype.setOptimisticPickCompletion = function (slotKey, listId) {
+    if (!slotKey || !listId) return null;
+    const active = this.localUiState.optimisticPickCompletions?.[slotKey];
+    if (
+        active &&
+        String(active.listId) === String(listId) &&
+        Date.now() - (active.createdAt || 0) < 1200
+    ) {
+        return active.opId;
+    }
+    const opId = this.createPickCompletionOpId();
+    this.localUiState.optimisticPickCompletions[slotKey] = {
+        opId,
+        listId: String(listId),
+        createdAt: Date.now(),
+        status: 'pending'
+    };
+    this._notifyUiOnlyChange();
+    return opId;
+};
+
+StateManager.prototype.markOptimisticPickCompletionCommitted = function (slotKey, opId) {
+    if (!slotKey) return;
+    const completion = this.localUiState.optimisticPickCompletions?.[slotKey];
+    if (!completion) return;
+    if (opId && completion.opId !== opId) return;
+    completion.status = 'committed';
+    completion.committedAt = Date.now();
+    this._notifyUiOnlyChange();
+};
+
+StateManager.prototype.clearOptimisticPickCompletion = function (slotKey, opId) {
+    if (!slotKey) return;
+    const completion = this.localUiState.optimisticPickCompletions?.[slotKey];
+    if (!completion) return;
+    if (opId && completion.opId !== opId) return;
+    delete this.localUiState.optimisticPickCompletions[slotKey];
+    this._notifyUiOnlyChange();
+};
+
+StateManager.prototype.isOptimisticPickCompletionActive = function (slotKey, state) {
+    if (!slotKey) return false;
+    const completion = this.localUiState.optimisticPickCompletions?.[slotKey];
+    if (!completion) return false;
+    const targetState = state || this.state || {};
+    const currentUserState = targetState.userStates?.[this.currentUserId] || {};
+    const currentPickingNo = currentUserState.currentPickingNo || null;
+    if (!currentPickingNo) return false;
+    return String(completion.listId) === String(currentPickingNo);
+};
+
+StateManager.prototype.setTransientWallError = function (slotKey, message, ttlMs = 3200) {
+    this.localUiState.transientWallError = {
+        slotKey: slotKey || null,
+        message: message || '通信失敗。もう一度タップしてください',
+        at: Date.now(),
+        expiresAt: Date.now() + ttlMs
+    };
+    this._notifyUiOnlyChange();
+};
+
+StateManager.prototype.clearTransientWallError = function (slotKey) {
+    const current = this.localUiState.transientWallError;
+    if (!current) return;
+    if (slotKey && current.slotKey && current.slotKey !== slotKey) return;
+    this.localUiState.transientWallError = null;
+    this._notifyUiOnlyChange();
+};
+
+StateManager.prototype.getTransientWallError = function () {
+    const current = this.localUiState.transientWallError;
+    if (!current) return null;
+    if (current.expiresAt && Date.now() > current.expiresAt) {
+        this.localUiState.transientWallError = null;
+        this._notifyUiOnlyChange();
+        return null;
+    }
+    return current;
+};
+
 StateManager.prototype.setOptimisticSlot = function (slotKey, jan) {
     if (!slotKey || !jan) return;
     const opId = `inject-op-${Date.now()}-${++this.localUiState.lastOpSeq}`;
@@ -296,7 +382,10 @@ StateManager.prototype.rollbackOptimisticInject = function (opId) {
 StateManager.prototype._reconcileLocalUiStateWithRemote = function (remoteState) {
     const remoteSlots = remoteState?.slots || {};
     const optimisticSlots = this.localUiState.optimisticSlots || {};
+    const optimisticPickCompletions = this.localUiState.optimisticPickCompletions || {};
     const remoteUserPending = remoteState?.userStates?.[this.currentUserId]?.injectPending;
+    const remoteActivePick = remoteState?.userStates?.[this.currentUserId]?.activePick || {};
+    const remotePickingNo = remoteState?.userStates?.[this.currentUserId]?.currentPickingNo || null;
     const remoteCancelledInfo = remoteState?.userStates?.[this.currentUserId]?.injectPendingCancelled || null;
     const remotePendingRequestId = remoteUserPending?.requestId || null;
     const remotePendingCancelledLocally = this.isInjectRequestCancelled(remotePendingRequestId);
@@ -326,6 +415,33 @@ StateManager.prototype._reconcileLocalUiStateWithRemote = function (remoteState)
 
         if (remoteConfirmed || committedTtlExpired || pendingTtlExpired) {
             delete optimisticSlots[slotKey];
+            changed = true;
+        }
+    });
+
+    Object.keys(optimisticPickCompletions).forEach((slotKey) => {
+        const optimisticPick = optimisticPickCompletions[slotKey];
+        if (!optimisticPick) return;
+        const now = Date.now();
+        const createdAt = optimisticPick.createdAt || 0;
+        const committedAt = optimisticPick.committedAt || 0;
+        const isPending = (optimisticPick.status || 'pending') === 'pending';
+        const expectedListId = optimisticPick.listId || null;
+        const activeEntry = remoteActivePick?.[slotKey];
+        const remotePendingQty = activeEntry?.pendingQty;
+        const remoteTotalQty = activeEntry?.totalQty;
+
+        const remoteDoneForSlot = activeEntry && remotePendingQty === 0 && remoteTotalQty > 0;
+        const remoteClearedForSlot =
+            !activeEntry &&
+            expectedListId &&
+            remotePickingNo &&
+            String(expectedListId) === String(remotePickingNo);
+        const pendingTtlExpired = isPending && createdAt > 0 && (now - createdAt > 10000);
+        const committedTtlExpired = !isPending && committedAt > 0 && (now - committedAt > 12000);
+
+        if (remoteDoneForSlot || remoteClearedForSlot || pendingTtlExpired || committedTtlExpired) {
+            delete optimisticPickCompletions[slotKey];
             changed = true;
         }
     });
@@ -381,6 +497,12 @@ StateManager.prototype._reconcileLocalUiStateWithRemote = function (remoteState)
             changed = true;
         }
     });
+
+    const transientWallError = this.localUiState.transientWallError;
+    if (transientWallError?.expiresAt && Date.now() > transientWallError.expiresAt) {
+        this.localUiState.transientWallError = null;
+        changed = true;
+    }
 
     if (changed) {
         this._notifyUiOnlyChange();
