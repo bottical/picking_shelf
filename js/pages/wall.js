@@ -83,6 +83,40 @@
             });
         }
 
+        let navigationGuardErrorTimer = null;
+        const showNavigationGuardError = (message) => {
+            let el = document.getElementById('navigationGuardError');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'navigationGuardError';
+                el.style.position = 'fixed';
+                el.style.left = '50%';
+                el.style.bottom = '20px';
+                el.style.transform = 'translateX(-50%)';
+                el.style.background = '#7f1d1d';
+                el.style.color = '#fff';
+                el.style.padding = '10px 14px';
+                el.style.border = '1px solid #ef4444';
+                el.style.borderRadius = '8px';
+                el.style.zIndex = '3200';
+                document.body.appendChild(el);
+            }
+            el.textContent = message;
+            if (navigationGuardErrorTimer) clearTimeout(navigationGuardErrorTimer);
+            navigationGuardErrorTimer = setTimeout(() => {
+                el.remove();
+            }, 5000);
+        };
+        const navGuard = window.NavigationGuard.createNavigationHelpers({
+            stateMgr,
+            audioManager: AudioManager,
+            onCancelError: () => {
+                showNavigationGuardError('作業のキャンセルに失敗したため、ページ移動を中止しました。通信状態をご確認ください。');
+            }
+        });
+        const guardedNavigate = navGuard.guardedNavigate;
+        navGuard.installBeforeUnloadGuard();
+
         // --- Setup Logic ---
         settingViewMode.addEventListener('change', () => {
             if (settingViewMode.value === 'single') {
@@ -1312,9 +1346,10 @@
         });
 
         document.querySelectorAll('.nav-link').forEach(link => {
-            link.addEventListener('click', () => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
                 const page = link.getAttribute('data-page');
-                window.location.href = page;
+                guardedNavigate(page);
             });
         });
     });
