@@ -15,6 +15,7 @@
         
         const setupOverlay = document.getElementById('setupOverlay');
         const settingBays = document.getElementById('settingBays');
+        const settingBaysRiskNotice = document.getElementById('settingBaysRiskNotice');
         const settingViewMode = document.getElementById('settingViewMode');
         const singleSettings = document.getElementById('singleSettings');
         const settingOrientation = document.getElementById('settingOrientation');
@@ -149,6 +150,7 @@
             settingBulkSplit.value = '';
             document.getElementById('settingShowOthers').checked = cfg.showOthers !== false;
             settingViewMode.dispatchEvent(new Event('change'));
+            refreshBaysRiskUi();
         };
 
         const hideSetup = () => setupOverlay.classList.add('hidden');
@@ -161,6 +163,8 @@
             });
         }
         closeSettingsBtn.addEventListener('click', () => hideSetup());
+        settingBays.addEventListener('input', () => refreshBaysRiskUi());
+        settingBays.addEventListener('change', () => refreshBaysRiskUi());
 
         saveSettingsBtn.addEventListener('click', async () => {
             const newConfig = {
@@ -181,6 +185,12 @@
             });
 
             try {
+                const saveRisk = buildBaysReductionRisk(stateMgr.state, newConfig.bays);
+                if (saveRisk.blocked) {
+                    alert(buildBaysReductionBlockedMessage(saveRisk));
+                    refreshBaysRiskUi();
+                    return;
+                }
                 await stateMgr.update({ config: newConfig });
 
                 const bulkSplit = parseInt(settingBulkSplit.value, 10);
@@ -215,9 +225,14 @@
 
         bayRemoveSplitBtn.onclick = () => {
             if (!editTargetBay) return;
-            const splitCount = stateMgr.state.splits?.[editTargetBay] || 1;
+            const splitCount = stateMgr.state?.splits?.[editTargetBay] || 1;
             if (splitCount > 1) {
-                stateMgr.update({ [`splits.${editTargetBay}`]: splitCount - 1 });
+                const splitRisk = buildSplitReductionRisk(stateMgr.state, editTargetBay, splitCount - 1);
+                if (splitRisk.blocked) {
+                    alert(buildSplitReductionBlockedMessage(splitRisk));
+                } else {
+                    stateMgr.update({ [`splits.${editTargetBay}`]: splitCount - 1 });
+                }
             }
             bayEditOverlay.classList.add('hidden');
         };
@@ -236,14 +251,14 @@
             
             const splitCount = state.splits?.[b] || 1;
             const maxSplit = 6;
-            const slots = state.slots || {};
-            const isLastEmpty = !slots[`${b}-${splitCount}`];
+            const splitRisk = buildSplitReductionRisk(state, b, splitCount - 1);
 
             bayAddSplitBtn.disabled = splitCount >= maxSplit;
             bayAddSplitBtn.style.opacity = splitCount >= maxSplit ? "0.5" : "1";
             
-            bayRemoveSplitBtn.disabled = !(splitCount > 1 && isLastEmpty);
+            bayRemoveSplitBtn.disabled = splitCount <= 1 || splitRisk.blocked;
             bayRemoveSplitBtn.style.opacity = bayRemoveSplitBtn.disabled ? "0.5" : "1";
+            bayRemoveSplitBtn.title = splitRisk.blocked ? getSplitReductionBlockedTitle(splitRisk) : '';
             
             bayEditOverlay.classList.remove('hidden');
         };
@@ -347,6 +362,195 @@
             return baseSlots;
         };
 
+        const getSlotSkus = (slot) => {
+            if (!slot) return [];
+            if (Array.isArray(slot.skus)) {
+                return slot.skus.filter((sku) => sku !== null && sku !== undefined && String(sku).trim() !== '');
+            }
+            if (slot.sku !== null && slot.sku !== undefined && String(slot.sku).trim() !== '') {
+                return [slot.sku];
+            }
+            return [];
+        };
+
+        const collectActiveSlotsInBayRange = (state, startBay, endBay) => {
+            if (!state) return [];
+            const mergedSlots = getMergedSlots(state);
+            const activeSlots = [];
+            Object.entries(mergedSlots).forEach(([slotKey, slot]) => {
+                const [bayText, slotText] = String(slotKey).split('-');
+                const bay = parseInt(bayText, 10);
+                const slotNo = parseInt(slotText, 10);
+                if (!Number.isInteger(bay) || bay < startBay || bay > endBay) return;
+                const skus = getSlotSkus(slot);
+                if (skus.length === 0) return;
+                activeSlots.push({
+                    slotKey,
+                    bay,
+                    slot: Number.isInteger(slotNo) ? slotNo : null,
+                    skus: [...skus]
+                });
+            });
+            return activeSlots.sort((a, b) => a.bay - b.bay || (a.slot || 0) - (b.slot || 0));
+        };
+
+        const buildBaysReductionRisk = (state, nextBaysInput) => {
+            const currentBays = parseInt(state?.config?.bays, 10) || 9;
+            const parsedNextBays = parseInt(nextBaysInput, 10);
+            const nextBays = Number.isFinite(parsedNextBays) ? Math.max(1, parsedNextBays) : 9;
+            const isReduction = nextBays < currentBays;
+            if (!isReduction) {
+                return {
+                    isReduction: false,
+                    currentBays,
+                    nextBays,
+                    affectedBayStart: null,
+                    affectedBayEnd: null,
+                    activeSlots: [],
+                    blocked: !state,
+                    reason: !state ? 'loading' : null
+                };
+            }
+            const affectedBayStart = nextBays + 1;
+            const affectedBayEnd = currentBays;
+            const activeSlots = collectActiveSlotsInBayRange(state, affectedBayStart, affectedBayEnd);
+            const reason = !state ? 'loading' : (activeSlots.length > 0 ? 'occupied' : null);
+            return {
+                isReduction: true,
+                currentBays,
+                nextBays,
+                affectedBayStart,
+                affectedBayEnd,
+                activeSlots,
+                blocked: reason !== null,
+                reason
+            };
+        };
+
+        const buildSplitReductionRisk = (state, bayInput, nextSplitInput) => {
+            const bay = parseInt(bayInput, 10);
+            const currentSplit = parseInt(state?.splits?.[bay], 10) || 1;
+            const parsedNextSplit = parseInt(nextSplitInput, 10);
+            const nextSplit = Number.isFinite(parsedNextSplit) ? Math.max(1, parsedNextSplit) : currentSplit;
+            const isReduction = nextSplit < currentSplit;
+            if (!isReduction) {
+                return {
+                    isReduction: false,
+                    bay,
+                    currentSplit,
+                    nextSplit,
+                    affectedSlotStart: null,
+                    affectedSlotEnd: null,
+                    activeSlots: [],
+                    blocked: !state,
+                    reason: !state ? 'loading' : null
+                };
+            }
+            if (!state) {
+                return {
+                    isReduction: true,
+                    bay,
+                    currentSplit,
+                    nextSplit,
+                    affectedSlotStart: nextSplit + 1,
+                    affectedSlotEnd: currentSplit,
+                    activeSlots: [],
+                    blocked: true,
+                    reason: 'loading'
+                };
+            }
+            const activeSlots = collectActiveSlotsInBayRange(state, bay, bay)
+                .filter((item) => item.slot && item.slot > nextSplit);
+            return {
+                isReduction: true,
+                bay,
+                currentSplit,
+                nextSplit,
+                affectedSlotStart: nextSplit + 1,
+                affectedSlotEnd: currentSplit,
+                activeSlots,
+                blocked: activeSlots.length > 0,
+                reason: activeSlots.length > 0 ? 'occupied' : null
+            };
+        };
+
+        const buildBaysReductionBlockedMessage = (risk) => {
+            if (risk?.reason === 'loading') {
+                return '状態読込中のため保存できません。少し待ってから再度お試しください。';
+            }
+            if (!risk || !risk.isReduction) {
+                return '総間口数を減らせません。設定値を確認してください。';
+            }
+            const problemBays = [...new Set(risk.activeSlots.map((item) => `No.${item.bay}`))].join(', ');
+            const problemSlots = risk.activeSlots.map((item) => item.slotKey).join(', ');
+            return `総間口数を減らせません。${problemBays} に投入済みSKUが残っています（${problemSlots}）。先に対象間口を空にしてから変更してください。表示外に残ると、ピッキング時に「その他」扱いになる可能性があります。`;
+        };
+
+        const buildSplitReductionBlockedMessage = (risk) => {
+            if (!risk || !risk.isReduction) {
+                return '分割数を減らせません。設定値を確認してください。';
+            }
+            if (risk.reason === 'loading') {
+                return `No.${risk.bay} の分割数を減らせません。状態読込中のため、少し待ってから再度お試しください。`;
+            }
+            const problemSlots = risk.activeSlots.map((item) => item.slotKey).join(', ');
+            return `No.${risk.bay} の分割数を減らせません。縮小対象の論理間口に投入済みSKUが残っています（${problemSlots}）。先に対象論理間口を空にしてください。`;
+        };
+
+        const getSplitReductionBlockedTitle = (risk) => {
+            if (!risk?.blocked) return '';
+            if (risk.reason === 'loading') return '状態読込中のため減らせません';
+            if (risk.reason === 'occupied') return '縮小対象の論理間口に投入済みSKUがあります';
+            return '';
+        };
+
+        // NOTE: ここは「bays 縮小リスク」専用の保存ボタン反映処理です。
+        // 他バリデーションと共存するため、bays 用フラグだけを管理します。
+        const applyBaysRiskToSaveButton = (riskBlocked) => {
+            saveSettingsBtn.dataset.baysRiskBlocked = riskBlocked ? 'true' : 'false';
+            if (riskBlocked) {
+                saveSettingsBtn.disabled = true;
+                saveSettingsBtn.textContent = '保存できません';
+                return;
+            }
+            if (saveSettingsBtn.dataset.otherValidationBlocked === 'true') return;
+            saveSettingsBtn.disabled = false;
+            saveSettingsBtn.textContent = '保存';
+        };
+
+        const refreshBaysRiskUi = () => {
+            const risk = buildBaysReductionRisk(stateMgr.state, settingBays.value);
+            if (!risk.isReduction) {
+                settingBaysRiskNotice.classList.add('hidden');
+                applyBaysRiskToSaveButton(false);
+                return;
+            }
+
+            const affectedRangeText = `No.${risk.affectedBayStart}〜No.${risk.affectedBayEnd}`;
+            const slotList = risk.activeSlots.map((item) => item.slotKey).join(', ');
+            const activeBayCount = new Set(risk.activeSlots.map((item) => item.bay)).size;
+
+            settingBaysRiskNotice.classList.remove('hidden');
+            if (risk.blocked) {
+                settingBaysRiskNotice.style.background = 'rgba(127, 29, 29, 0.2)';
+                settingBaysRiskNotice.style.border = '1px solid rgba(248, 113, 113, 0.75)';
+                settingBaysRiskNotice.style.color = '#fecaca';
+                if (risk.reason === 'loading') {
+                    settingBaysRiskNotice.innerHTML = `⚠️ 縮小対象: ${affectedRangeText}<br>状態を読み込み中のため、いまは保存できません。`;
+                } else {
+                    settingBaysRiskNotice.innerHTML = `⚠️ 縮小対象: ${affectedRangeText}<br>投入済み間口: ${activeBayCount} 件<br>問題のある論理間口: ${slotList}`;
+                }
+                applyBaysRiskToSaveButton(true);
+                return;
+            }
+
+            settingBaysRiskNotice.style.background = 'rgba(30, 41, 59, 0.45)';
+            settingBaysRiskNotice.style.border = '1px solid rgba(148, 163, 184, 0.55)';
+            settingBaysRiskNotice.style.color = '#cbd5e1';
+            settingBaysRiskNotice.innerHTML = `ℹ️ 縮小対象: ${affectedRangeText}<br>投入済み間口: 0 件<br>対象間口に投入済みデータはありません。`;
+            applyBaysRiskToSaveButton(false);
+        };
+
         const getOptimisticMeta = (slotKey) => {
             return stateMgr.localUiState.optimisticSlots?.[slotKey]?._meta || null;
         };
@@ -386,7 +590,7 @@
             const allocatedSkus = new Set();
 
             Object.values(mergedSlots).forEach(slot => {
-                const skus = slot?.skus || (slot?.sku ? [slot.sku] : []);
+                const skus = getSlotSkus(slot);
                 skus.forEach(jan => allocatedSkus.add(String(jan)));
             });
 
@@ -835,13 +1039,20 @@
                     minusBtn.innerHTML = '－';
                     minusBtn.style.fontSize = '14px';
                     minusBtn.style.background = 'rgba(0, 0, 0, 0.6)';
-                    const isLastEmpty = !state.slots?.[`${b}-${splitCount}`];
-                    if (splitCount <= 1 || !isLastEmpty) {
+                    const splitRisk = buildSplitReductionRisk(state, b, splitCount - 1);
+                    if (splitCount <= 1 || splitRisk.blocked) {
                         minusBtn.classList.add('disabled');
+                        minusBtn.title = splitRisk.blocked ? getSplitReductionBlockedTitle(splitRisk) : '';
                     } else {
                         minusBtn.onclick = (e) => {
                             e.stopPropagation();
-                            stateMgr.update({ [`splits.${b}`]: splitCount - 1 });
+                            const latestSplitCount = stateMgr.state?.splits?.[b] || splitCount;
+                            const latestRisk = buildSplitReductionRisk(stateMgr.state, b, latestSplitCount - 1);
+                            if (latestRisk.blocked) {
+                                alert(buildSplitReductionBlockedMessage(latestRisk));
+                                return;
+                            }
+                            stateMgr.update({ [`splits.${b}`]: latestSplitCount - 1 });
                         };
                     }
                     controls.appendChild(minusBtn);
