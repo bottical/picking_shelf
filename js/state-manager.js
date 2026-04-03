@@ -119,6 +119,38 @@ StateManager.prototype.hasEffectiveInjectPendingForCurrentUser = function (state
     return !!this.getEffectiveInjectPendingForCurrentUser(state);
 };
 
+StateManager.prototype.getInProgressWorkForCurrentUser = function (state) {
+    const targetState = state || this.state || {};
+    const currentUserState = targetState.userStates?.[this.currentUserId] || {};
+    const injectPending = this.getEffectiveInjectPendingForCurrentUser(targetState);
+    const currentPickingNo = currentUserState.currentPickingNo || null;
+    const activePick = currentUserState.activePick || {};
+    const hasPickEntries = Object.values(activePick).some((entry) => {
+        if (!entry || typeof entry !== 'object') return false;
+        if (typeof entry.pendingQty === 'number') return entry.pendingQty > 0;
+        return true;
+    });
+
+    return {
+        hasInjectInProgress: !!injectPending,
+        injectPending,
+        hasPickInProgress: !!currentPickingNo && hasPickEntries,
+        currentPickingNo,
+        activePick
+    };
+};
+
+StateManager.prototype.cancelCurrentWorkForNavigation = async function () {
+    const work = this.getInProgressWorkForCurrentUser(this.state);
+    if (work.hasInjectInProgress) {
+        await this.cancelInjectPending();
+    }
+    if (work.hasPickInProgress) {
+        await this.resetUserPick(this.currentUserId);
+    }
+    return work;
+};
+
 StateManager.prototype.getActiveDuplicateHighlightForUser = function (state, userId) {
     const targetState = state || this.state || {};
     const targetUserId = userId || this.currentUserId;

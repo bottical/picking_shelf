@@ -31,7 +31,19 @@
             }
         };
 
-        const loadList = async (id) => {
+        const showInlineError = (message) => {
+            currentListTitle.innerHTML = `<span style="color: var(--danger);">${message}</span>`;
+        };
+        const navGuard = window.NavigationGuard.createNavigationHelpers({
+            stateMgr,
+            audioManager: AudioManager,
+            onCancelError: () => {
+                showInlineError('作業のキャンセルに失敗したため、ページ移動を中止しました。通信状態をご確認ください。');
+            }
+        });
+        const guardedNavigate = navGuard.guardedNavigate;
+
+        const loadListCore = async (id) => {
             const pickList = await stateMgr.loadPickList(id);
             if (!pickList) {
                     AudioManager.playErrorSound();
@@ -49,6 +61,40 @@
             else AudioManager.playStartSound();
             stateMgr.startPicking(id, newActivePick);
         };
+
+        const loadList = async (id) => {
+            const targetId = (id || '').trim();
+            if (!targetId) return;
+            const work = stateMgr.getInProgressWorkForCurrentUser(stateMgr.state);
+            const currentPickingNo = work.currentPickingNo || null;
+            if (!work.hasInjectInProgress && !work.hasPickInProgress) {
+                await loadListCore(targetId);
+                return;
+            }
+            if (currentPickingNo && String(currentPickingNo) === String(targetId)) {
+                return;
+            }
+
+            const message = window.NavigationGuard.buildSwitchPickingMessage(currentPickingNo || '---', targetId, work);
+            const proceed = await navGuard.showNavigationConfirmModal(message);
+            if (!proceed) return;
+
+            try {
+                if (work.hasInjectInProgress) {
+                    await stateMgr.cancelInjectPending();
+                }
+                if (work.hasPickInProgress) {
+                    await stateMgr.resetUserPick(stateMgr.currentUserId);
+                }
+                await loadListCore(targetId);
+            } catch (e) {
+                console.error('ピッキング切り替え時のキャンセルに失敗しました:', e);
+                AudioManager?.playErrorSound?.();
+                showInlineError('ピッキング作業のキャンセルに失敗したため、新規読込を中止しました。通信状態をご確認ください。');
+            }
+        };
+
+        navGuard.installBeforeUnloadGuard();
 
         const render = (state) => {
             updateUserSelectorUI();
@@ -161,9 +207,10 @@
         }
 
         document.querySelectorAll('.nav-link').forEach(link => {
-            link.addEventListener('click', () => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
                 const page = link.getAttribute('data-page');
-                window.location.href = page;
+                guardedNavigate(page);
             });
         });
     });

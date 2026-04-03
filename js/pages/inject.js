@@ -75,6 +75,16 @@
             });
         }
 
+        const navGuard = window.NavigationGuard.createNavigationHelpers({
+            stateMgr,
+            audioManager: AudioManager,
+            onCancelError: () => {
+                showMessage('❌ 作業のキャンセルに失敗したため、ページ移動を中止しました。通信状態をご確認ください。', 'error');
+            }
+        });
+        const guardedNavigate = navGuard.guardedNavigate;
+        navGuard.installBeforeUnloadGuard();
+
 
         const normalizeJan = (jan) => {
             if (!jan) return "";
@@ -633,9 +643,10 @@
         });
 
         document.querySelectorAll('.nav-link').forEach(link => {
-            link.addEventListener('click', () => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
                 const page = link.getAttribute('data-page');
-                window.location.href = page;
+                guardedNavigate(page);
             });
         });
     });
