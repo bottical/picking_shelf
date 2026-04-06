@@ -618,7 +618,7 @@
             return janText ? `...${janText.slice(-4)}` : '';
         };
 
-        const showSlotSkusModal = (b, s, skus, stateMgr) => {
+        const showSlotSkusModal = (b, s, skus, stateMgr, state) => {
             let overlay = document.getElementById('slotSkusOverlay');
             if (overlay) overlay.remove();
 
@@ -652,6 +652,7 @@
 
             const listContainer = modal.querySelector('#skusList');
             skus.forEach(jan => {
+                const requiredQty = Number(state?.injectList?.[jan]) || 0;
                 const item = document.createElement('div');
                 item.style.display = 'flex';
                 item.style.justifyContent = 'space-between';
@@ -661,7 +662,8 @@
                 item.style.borderRadius = '6px';
                 
                 item.innerHTML = `
-                    <span style="font-family:monospace; font-weight:700;">${jan}</span>
+                    <span style="font-family:monospace; font-weight:700; flex:1;">${jan}</span>
+                    <span style="font-size:0.75rem; color:#94a3b8; width:72px; text-align:right; margin-right:0.75rem;">必要 ${requiredQty}</span>
                     <button class="btn btn-danger remove-sku-btn" data-jan="${jan}" style="padding:0.25rem 0.75rem; font-size:0.8rem;">解除</button>
                 `;
                 listContainer.appendChild(item);
@@ -986,7 +988,7 @@
                         e.stopPropagation();
                         clearDuplicateHighlightIfMatched(slotKey);
                         if (isInjectReady) stateMgr.selectSlot(b, s);
-                        else showSlotSkusModal(b, s, skus, stateMgr);
+                        else showSlotSkusModal(b, s, skus, stateMgr, state);
                     };
                     if (skus.length === 1) {
                         const jan = skus[0];

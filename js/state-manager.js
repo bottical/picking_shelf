@@ -842,6 +842,22 @@ StateManager.prototype.loadPickList = async function (listId) {
     return pickListData;
 };
 
+StateManager.prototype.getPickListProgressSummary = async function () {
+    if (!this.user) return { total: 0, completed: 0 };
+    const snapshot = await this._getPickListCollectionRef(this.user.uid).get();
+    let total = 0;
+    let completed = 0;
+
+    snapshot.forEach((doc) => {
+        total += 1;
+        const lines = doc.data()?.lines || [];
+        const allDone = lines.length > 0 && lines.every((line) => line.status === 'DONE');
+        if (allDone) completed += 1;
+    });
+
+    return { total, completed };
+};
+
 StateManager.prototype._hasActiveSkuInSlot = function (slotData) {
     return !!slotData && (
         (Array.isArray(slotData.skus) && slotData.skus.length > 0) ||
