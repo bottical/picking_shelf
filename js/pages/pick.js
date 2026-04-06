@@ -5,9 +5,13 @@
         const pickTable = document.getElementById('pickTable');
         const currentListTitle = document.getElementById('currentListTitle');
         const sessionDisplay = document.getElementById('sessionDisplay');
+        const pickProgressCard = document.getElementById('pickProgressCard');
+        const pickProgressText = document.getElementById('pickProgressText');
+        const pickProgressFill = document.getElementById('pickProgressFill');
 
         let lastRenderedPickingNo = null;
         let lastRenderedAllCompleted = false;
+        let progressSummary = { total: 0, completed: 0 };
 
         const stateMgr = new StateManager(
             (state) => render(state),
@@ -50,6 +54,7 @@
                     listIdInput.value = '';
                     currentListTitle.innerHTML = `<span style="color: var(--danger);">エラー：見つかりません (${id})</span>`;
                     pickTable.innerHTML = `<tr><td colspan="5" style="padding:3rem; text-align:center; color:var(--danger); font-size:1.2rem; font-weight:bold;">入力されたピッキングNo.「${id}」が存在しません。</td></tr>`;
+                    await refreshPickProgress();
                     return;
             }
             listIdInput.value = '';
@@ -59,7 +64,8 @@
             const allCompleted = lines.length > 0 && lines.every(l => l.status === 'DONE');
             if (allCompleted) AudioManager.playErrorSound();
             else AudioManager.playStartSound();
-            stateMgr.startPicking(id, newActivePick);
+            await stateMgr.startPicking(id, newActivePick);
+            await refreshPickProgress();
         };
 
         const loadList = async (id) => {
@@ -96,7 +102,28 @@
 
         navGuard.installBeforeUnloadGuard();
 
+        const updateProgressUi = () => {
+            const total = Number(progressSummary?.total) || 0;
+            const completed = Number(progressSummary?.completed) || 0;
+            if (!pickProgressCard || !pickProgressText || !pickProgressFill) return;
+
+            pickProgressText.textContent = `${completed} / ${total}`;
+            pickProgressFill.style.width = `${total > 0 ? (completed / total) * 100 : 0}%`;
+            pickProgressCard.classList.toggle('hidden', total === 0);
+        };
+
+        const refreshPickProgress = async () => {
+            try {
+                progressSummary = await stateMgr.getPickListProgressSummary();
+            } catch (error) {
+                console.error('全体進捗の取得に失敗しました:', error);
+                progressSummary = { total: 0, completed: 0 };
+            }
+            render(stateMgr.state || {});
+        };
+
         const render = (state) => {
+            updateProgressUi();
             updateUserSelectorUI();
             const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
             const currentPickingNo = currentUserState.currentPickingNo;
@@ -177,12 +204,19 @@
             });
         };
 
-        const completeLine = (index) => {
+        const completeLine = async (index) => {
             const currentUserState = stateMgr.state.userStates?.[stateMgr.currentUserId];
             const currentPickingNo = currentUserState?.currentPickingNo;
             if (!currentPickingNo) return;
-            
-            stateMgr.completePickLine(currentPickingNo, Number(index));
+
+            try {
+                await stateMgr.completePickLine(currentPickingNo, Number(index));
+                await refreshPickProgress();
+            } catch (e) {
+                console.error('completeLine failed:', e);
+                AudioManager?.playErrorSound?.();
+                showInlineError('完了処理に失敗しました。通信状態をご確認ください。');
+            }
         };
 
         // UI Event Listeners
@@ -190,13 +224,19 @@
             if (e.key === 'Enter') loadList(listIdInput.value.trim());
         });
 
-        document.getElementById('resetPickingBtn').onclick = () => {
+        document.getElementById('resetPickingBtn').onclick = async () => {
             const currentUserState = stateMgr.state.userStates?.[stateMgr.currentUserId];
             if (!currentUserState?.currentPickingNo) return;
-            
-            stateMgr.resetUserPick(stateMgr.currentUserId).then(() => {
+
+            try {
+                await stateMgr.resetUserPick(stateMgr.currentUserId);
                 alert("ピッキング作業をリセットしました（未完了の進捗もクリアされました）");
-            });
+                await refreshPickProgress();
+            } catch (e) {
+                console.error('resetPicking failed:', e);
+                AudioManager?.playErrorSound?.();
+                showInlineError('リセットに失敗しました。通信状態をご確認ください。');
+            }
         };
 
         const userSelect = document.getElementById('userSelect');
@@ -213,5 +253,7 @@
                 guardedNavigate(page);
             });
         });
+
+        refreshPickProgress();
     });
 })();

@@ -103,6 +103,15 @@
         <main class="main-list">
             <h2 id="currentListTitle" style="margin-top:0; font-size:1.5rem; margin-bottom:1.5rem;">ピッキングNo.を入力してください
             </h2>
+            <div id="pickProgressCard" class="card hidden" style="margin-bottom:1rem; padding:0.75rem 1rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                    <span style="font-weight:700;">CSV全体進捗</span>
+                    <span id="pickProgressText" style="font-weight:800;">0 / 0</span>
+                </div>
+                <div style="height:8px; background:#e2e8f0; border-radius:999px; overflow:hidden;">
+                    <div id="pickProgressFill" style="height:100%; width:0%; background:#2563eb; transition:width .2s ease;"></div>
+                </div>
+            </div>
             <div class="card" style="padding:0; overflow:hidden;">
                 <table>
                     <thead>
