@@ -170,7 +170,7 @@ input:focus {
 
 body.wall-mode #instructionBanner {
     position: fixed;
-    top: calc(env(safe-area-inset-top, 0px) + 8px);
+    top: calc(env(safe-area-inset-top, 0px) + 64px);
     left: 50%;
     transform: translateX(-50%);
     width: min(92vw, 720px);
