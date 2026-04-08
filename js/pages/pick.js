@@ -462,7 +462,7 @@
 
             try {
                 await stateMgr.resetUserPick(stateMgr.currentUserId);
-                alert('ピッキング作業をリセットしました（未完了の進捗もクリアされました）');
+                alert('ピッキング作業をリセットしました（未完了は初期化、完了済みは完了状態のまま解除）');
             } catch (e) {
                 console.error('resetPicking failed:', e);
                 AudioManager?.playErrorSound?.();
