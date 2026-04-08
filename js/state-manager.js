@@ -166,7 +166,9 @@ StateManager.prototype.cancelCurrentWorkForNavigation = async function () {
         this.clearLocalInjectPending();
     }
 
-    if (work.hasPickInProgress) {
+    // currentPickingNo がある場合は、進捗の完了/未完了に関わらず
+    // resetUserPick() の分岐ロジックで適切に解除する。
+    if (work.currentPickingNo) {
         await this.resetUserPick(this.currentUserId);
     }
     return work;
@@ -1208,7 +1210,10 @@ StateManager.prototype._applyResetLogic = async function (userId, uid, data, upd
         if (pickListDoc.exists) {
             const pickListData = pickListDoc.data() || {};
             const lines = this._normalizePickLines(pickListData.lines || []);
-            if (lines.length > 0) {
+            const isCompleted = this._isPickListCompleted(lines);
+            // 未完了 reset のみ lines を初期化する。
+            // 完了済み reset は「完了取消」ではなくセッション解除のみ。
+            if (!isCompleted && lines.length > 0) {
                 const nextLines = lines.map((line) => ({ ...line, checkedQty: 0, status: 'PENDING' }));
                 const hasChanged = nextLines.some((line, idx) => (
                     line.checkedQty !== lines[idx].checkedQty || line.status !== lines[idx].status
