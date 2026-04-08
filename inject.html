@@ -48,8 +48,8 @@
 </head>
 
 <body>
-    <header>
-        <div style="display:flex; align-items:center; gap:1rem;">
+    <header id="pageHeader">
+    <div style="display:flex; align-items:center; gap:1rem;">
             <h2 style="margin:0;">📥 投入モード</h2>
             <select id="userSelect" class="user-select" style="margin-right:0.5rem;">
                 <option value="user1">User 1</option>
@@ -86,7 +86,7 @@
                 </div>
             </div>
 
-            <div id="instructionPanel" class="card hidden"
+            <div id="instructionPanel" class="card hidden inject-header-overlay"
                 style="background: #eff6ff; border-color: var(--primary); text-align: center; padding: 1.5rem; margin-top: 1rem;">
                 <p style="color:var(--primary); font-weight:800; font-size: 1.05rem; margin: 0 0 1rem;">
                     📱 空き枠をタップしてください
