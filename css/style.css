@@ -172,6 +172,7 @@ input:focus {
     position: fixed !important;
     top: 76px;
     left: 50%;
+    right: auto;
     transform: translateX(-50%);
     width: min(720px, calc(100vw - 2rem));
     margin-top: 0 !important;
@@ -193,10 +194,6 @@ input:focus {
         overflow-y: auto;
     }
 }
-
-body:has(#instructionPanel:not(.hidden)) #instructionPanel {
-    display: block !important;
- }
 
 .indicator-container {
     position: absolute;
