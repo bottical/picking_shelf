@@ -207,12 +207,7 @@
             if (!proceed) return;
 
             try {
-                if (work.hasInjectInProgress) {
-                    await stateMgr.cancelInjectPending();
-                }
-                if (work.hasPickInProgress) {
-                    await stateMgr.resetUserPick(stateMgr.currentUserId);
-                }
+                await stateMgr.cancelCurrentWorkForNavigation();
                 await loadListCore(targetId);
             } catch (e) {
                 console.error('ピッキング切り替え時のキャンセルに失敗しました:', e);
