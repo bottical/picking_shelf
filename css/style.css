@@ -168,33 +168,6 @@ input:focus {
     border-bottom-color: #b91c1c;
 }
 
-.inject-header-overlay {
-    position: fixed !important;
-    top: 76px;
-    left: 50%;
-    right: auto;
-    transform: translateX(-50%);
-    width: min(720px, calc(100vw - 2rem));
-    margin-top: 0 !important;
-    z-index: 250;
-    box-shadow: var(--shadow-lg);
-    pointer-events: auto;
-}
-
-@media (max-width: 768px) {
-    .inject-header-overlay {
-        top: 108px;
-        width: calc(100vw - 1rem);
-    }
-}
-
-@media (min-width: 769px) {
-    .inject-header-overlay {
-        max-height: min(46vh, 420px);
-        overflow-y: auto;
-    }
-}
-
 .indicator-container {
     position: absolute;
     top: 4px;
