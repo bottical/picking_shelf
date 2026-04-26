@@ -32,7 +32,10 @@
         const settingDisplayScale = document.getElementById('settingDisplayScale');
         const settingDenseTextMode = document.getElementById('settingDenseTextMode');
         const settingBulkSplit = document.getElementById('settingBulkSplit');
-        const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+        const saveDisplaySettingsBtn = document.getElementById('saveDisplaySettingsBtn');
+        const saveAdvancedSettingsBtn = document.getElementById('saveAdvancedSettingsBtn');
+        const advancedSettingsDetails = document.getElementById('advancedSettingsDetails');
+        const currentBaysValue = document.getElementById('currentBaysValue');
         const closeSettingsBtn = document.getElementById('closeSettingsBtn');
         const DEVICE_SETTINGS_KEY = 'picking_shelf_wall_device_settings_v1';
 
@@ -155,11 +158,13 @@
             if (cfg.orientation) settingOrientation.value = cfg.orientation;
             if (cfg.multiRows) settingMultiRows.value = cfg.multiRows;
             if (cfg.multiCols) settingMultiCols.value = cfg.multiCols;
+            currentBaysValue.textContent = cfg.bays || 9;
             const deviceSettings = getDeviceWallSettings();
             settingMultiStartId.value = deviceSettings.multiStartId || cfg.multiStartId || 1;
             settingDisplayScale.value = deviceSettings.displayScale || 'M';
             settingDenseTextMode.checked = deviceSettings.denseTextMode !== false;
             settingBulkSplit.value = '';
+            advancedSettingsDetails.open = !cfg.bays;
             document.getElementById('settingShowOthers').checked = cfg.showOthers !== false;
             settingViewMode.dispatchEvent(new Event('change'));
             refreshBaysRiskUi();
@@ -178,19 +183,13 @@
         settingBays.addEventListener('input', () => refreshBaysRiskUi());
         settingBays.addEventListener('change', () => refreshBaysRiskUi());
 
-        saveSettingsBtn.addEventListener('click', async () => {
+        saveDisplaySettingsBtn.addEventListener('click', async () => {
             const currentConfig = stateMgr.state?.config || {};
-            const newConfig = {
-                bays: parseInt(settingBays.value, 10) || 9,
-                viewMode: settingViewMode.value,
-                orientation: settingOrientation.value,
-                multiRows: parseInt(settingMultiRows.value, 10) || 3,
-                multiCols: parseInt(settingMultiCols.value, 10) || 3,
-                showOthers: document.getElementById('settingShowOthers').checked,
-                maxSplit: 6,
-                pickMode: currentConfig.pickMode === 'VERIFY' ? 'VERIFY' : 'NORMAL',
-                quantityVerification: !!currentConfig.quantityVerification
-            };
+            if (!currentConfig.bays) {
+                advancedSettingsDetails.open = true;
+                alert('先に総間口数を設定してください。');
+                return;
+            }
             const localMultiStartId = Math.max(1, parseInt(settingMultiStartId.value, 10) || 1);
             const localDisplayScale = ['S', 'M', 'L'].includes(settingDisplayScale.value) ? settingDisplayScale.value : 'M';
             saveDeviceWallSettings({
@@ -200,13 +199,12 @@
             });
 
             try {
-                const saveRisk = buildBaysReductionRisk(stateMgr.state, newConfig.bays);
-                if (saveRisk.blocked) {
-                    alert(buildBaysReductionBlockedMessage(saveRisk));
-                    refreshBaysRiskUi();
-                    return;
-                }
-                await stateMgr.update({ config: newConfig });
+                await stateMgr.update({
+                    config: {
+                        ...currentConfig,
+                        showOthers: document.getElementById('settingShowOthers').checked
+                    }
+                });
 
                 const bulkSplit = parseInt(settingBulkSplit.value, 10);
                 if (bulkSplit >= 1 && bulkSplit <= 6) {
@@ -215,13 +213,61 @@
                         alert(`一括分割設定を適用しました（変更 ${result.changedBays} 間口 / 制約で据え置き ${result.constrainedBays} 間口）`);
                     }
                 }
+                settingBulkSplit.value = '';
 
                 hideSetup();
-                currentSingleBayId = null; // reset to selector if in single mode
                 render(stateMgr.state);
             } catch (error) {
-                console.error('設定の保存に失敗しました:', error);
-                alert('設定の保存に失敗しました。通信状態をご確認ください。');
+                console.error('表示・運用設定の保存に失敗しました:', error);
+                alert('表示・運用設定の保存に失敗しました。通信状態をご確認ください。');
+            }
+        });
+
+        saveAdvancedSettingsBtn.addEventListener('click', async () => {
+            const currentConfig = stateMgr.state?.config || {};
+            const nextBays = parseInt(settingBays.value, 10) || 9;
+            const oldBays = parseInt(currentConfig.bays, 10) || null;
+
+            const saveRisk = buildBaysReductionRisk(stateMgr.state, nextBays);
+            if (saveRisk.blocked) {
+                alert(buildBaysReductionBlockedMessage(saveRisk));
+                refreshBaysRiskUi();
+                return;
+            }
+
+            if (oldBays && nextBays !== oldBays) {
+                const ok = confirm(
+                    `総間口数を変更します。\n\n` +
+                    `現在: ${oldBays}\n` +
+                    `変更後: ${nextBays}\n\n` +
+                    `この変更は全端末の表示構成に影響します。\n` +
+                    `誤って変更すると、表示範囲やピッキング表示が大きく変わる可能性があります。\n\n` +
+                    `本当に保存しますか？`
+                );
+                if (!ok) return;
+            }
+
+            const newConfig = {
+                ...currentConfig,
+                bays: nextBays,
+                viewMode: settingViewMode.value,
+                orientation: settingOrientation.value,
+                multiRows: parseInt(settingMultiRows.value, 10) || 3,
+                multiCols: parseInt(settingMultiCols.value, 10) || 3,
+                showOthers: document.getElementById('settingShowOthers').checked,
+                maxSplit: 6,
+                pickMode: currentConfig.pickMode === 'VERIFY' ? 'VERIFY' : 'NORMAL',
+                quantityVerification: !!currentConfig.quantityVerification
+            };
+
+            try {
+                await stateMgr.update({ config: newConfig });
+                hideSetup();
+                currentSingleBayId = null;
+                render(stateMgr.state);
+            } catch (error) {
+                console.error('詳細設定の保存に失敗しました:', error);
+                alert('詳細設定の保存に失敗しました。通信状態をご確認ください。');
             }
         });
 
@@ -522,15 +568,15 @@
         // NOTE: ここは「bays 縮小リスク」専用の保存ボタン反映処理です。
         // 他バリデーションと共存するため、bays 用フラグだけを管理します。
         const applyBaysRiskToSaveButton = (riskBlocked) => {
-            saveSettingsBtn.dataset.baysRiskBlocked = riskBlocked ? 'true' : 'false';
+            saveAdvancedSettingsBtn.dataset.baysRiskBlocked = riskBlocked ? 'true' : 'false';
             if (riskBlocked) {
-                saveSettingsBtn.disabled = true;
-                saveSettingsBtn.textContent = '保存できません';
+                saveAdvancedSettingsBtn.disabled = true;
+                saveAdvancedSettingsBtn.textContent = '詳細設定を保存できません';
                 return;
             }
-            if (saveSettingsBtn.dataset.otherValidationBlocked === 'true') return;
-            saveSettingsBtn.disabled = false;
-            saveSettingsBtn.textContent = '保存';
+            if (saveAdvancedSettingsBtn.dataset.otherValidationBlocked === 'true') return;
+            saveAdvancedSettingsBtn.disabled = false;
+            saveAdvancedSettingsBtn.textContent = '詳細設定を保存';
         };
 
         const refreshBaysRiskUi = () => {
