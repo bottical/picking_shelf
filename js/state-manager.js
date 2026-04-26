@@ -1489,7 +1489,7 @@ StateManager.prototype.resetPreserveConfig = function () {
             orientation: currentConfig.orientation || 'landscape',
             multiRows: currentConfig.multiRows || 3,
             multiCols: currentConfig.multiCols || 3,
-            showOthers: !!currentConfig.showOthers,
+            showOthers: currentConfig.showOthers !== false,
             pickMode: currentConfig.pickMode === 'VERIFY' ? 'VERIFY' : 'NORMAL',
             quantityVerification: !!currentConfig.quantityVerification,
             csvFormat: currentConfig.csvFormat || undefined
@@ -1498,6 +1498,11 @@ StateManager.prototype.resetPreserveConfig = function () {
         splits,
         injectList: {},
         janIndex: {},
+        pickListSource: null,
+        progressSummary: {
+            total: 0,
+            completed: 0
+        },
         userStates: {
             user1: { activePick: {}, currentPickingNo: null, injectPending: null, duplicateHighlight: null },
             user2: { activePick: {}, currentPickingNo: null, injectPending: null, duplicateHighlight: null },
