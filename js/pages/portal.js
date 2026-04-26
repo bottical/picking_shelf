@@ -7,8 +7,39 @@
         const emailInput = document.getElementById('emailInput');
         const passInput = document.getElementById('passInput');
 
+        const pickListSourceCard = document.getElementById('pickListSourceCard');
+        const pickListSourceName = document.getElementById('pickListSourceName');
+        const pickListSourceMeta = document.getElementById('pickListSourceMeta');
+
+        const updatePickListSourceUi = (state) => {
+            if (!pickListSourceCard || !pickListSourceName || !pickListSourceMeta) return;
+
+            const source = state?.pickListSource || null;
+            const injectListCount = Object.keys(state?.injectList || {}).length;
+            const progressTotal = Number(state?.progressSummary?.total) || 0;
+            const hasPickList = injectListCount > 0 || progressTotal > 0;
+
+            pickListSourceCard.classList.remove('hidden');
+
+            if (!hasPickList || !source?.fileName) {
+                pickListSourceName.textContent = 'ピッキングリスト未読込';
+                pickListSourceMeta.textContent = '';
+                return;
+            }
+
+            pickListSourceName.textContent = source.fileName;
+            const importedAt = source.importedAt
+                ? new Date(source.importedAt).toLocaleString('ja-JP')
+                : '';
+            pickListSourceMeta.textContent = importedAt
+                ? `読込日時: ${importedAt}`
+                : '';
+        };
+
         const stateMgr = new StateManager(
-            (state) => { /* State updates handled locally or per page */ },
+            (state) => {
+                updatePickListSourceUi(state);
+            },
             (user) => {
                 document.getElementById('loader')?.classList.add('hidden');
                 document.getElementById('appContent')?.classList.remove('hidden');
@@ -20,6 +51,7 @@
                 } else {
                     loginSection.classList.remove('hidden');
                     menuSection.classList.add('hidden');
+                    updatePickListSourceUi(null);
                 }
             }
         );

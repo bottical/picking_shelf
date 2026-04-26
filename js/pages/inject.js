@@ -645,7 +645,7 @@
             alert('CSVの列取り込み設定を更新しました。');
         });
 
-        const processImportedRows = async (rows, format) => {
+        const processImportedRows = async (rows, format, sourceFile = null) => {
             const idxPick = format.pickCol - 1;
             const idxJan = format.janCol - 1;
             const idxQty = format.qtyCol - 1;
@@ -676,7 +676,15 @@
                 groupedPick[pickNo].push({ jan, qty, checkedQty: 0, status: 'PENDING' });
             });
 
-            const updates = { injectList: aggregatedInject };
+            const updates = {
+                injectList: aggregatedInject,
+                pickListSource: {
+                    fileName: sourceFile?.name || null,
+                    fileType: sourceFile?.type || '',
+                    fileSize: sourceFile?.size || 0,
+                    importedAt: Date.now()
+                }
+            };
             const currentSplits = stateMgr.state?.splits || {};
             const newSplits = { ...currentSplits };
             let needInit = false;
@@ -729,7 +737,7 @@
                             raw: false,
                             defval: ''
                         });
-                        await processImportedRows(rows, format);
+                        await processImportedRows(rows, format, file);
                     } catch (err) {
                         console.error('Excelファイルの解析に失敗しました:', err);
                         alert('Excelファイルの読み込みに失敗しました。ファイル形式をご確認ください。');
@@ -739,7 +747,7 @@
 
                 const text = e.target.result;
                 const lines = text.split(/\r?\n/).filter(x => x.trim());
-                await processImportedRows(lines, format);
+                await processImportedRows(lines, format, file);
             };
             if (isExcel) {
                 reader.readAsArrayBuffer(file);
