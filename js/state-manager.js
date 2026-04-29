@@ -1,5 +1,42 @@
 // StateManager (Non-module version)
 // Depends on firebase-app.js, firebase-auth.js, and firebase-firestore.js (compat versions)
+window.__shelflowPerf = window.__shelflowPerf || {
+    events: [],
+    max: 500,
+    mark(name, data = {}) {
+        const appVersion = window.APP_VERSION || document.documentElement?.dataset?.appVersion || null;
+        const entry = {
+            name,
+            data,
+            t: performance.now(),
+            at: Date.now(),
+            page: location.pathname,
+            ua: navigator.userAgent,
+            visibility: document.visibilityState,
+            appVersion
+        };
+        this.events.push(entry);
+        if (this.events.length > this.max) this.events.shift();
+        if (localStorage.getItem('shelflow_perf_enabled') === '1') {
+            console.debug('[perf]', name, data);
+        }
+        return entry;
+    },
+    table() {
+        console.table(this.events.map((e, i) => ({
+            i,
+            name: e.name,
+            dt: i > 0 ? Math.round(e.t - this.events[i - 1].t) : 0,
+            t: Math.round(e.t),
+            at: e.at,
+            page: e.page,
+            ...e.data
+        })));
+    },
+    clear() {
+        this.events = [];
+    }
+};
 
 function StateManager(onStateChange, onUserChange) {
     this.onStateChange = onStateChange;
@@ -57,6 +94,13 @@ function StateManager(onStateChange, onUserChange) {
         optimisticPickLineOps: {},
         transientWallError: null,
         lastOpSeq: 0
+    };
+    this._diag = {
+        latestStateSnapshotAt: 0,
+        latestPickListSnapshotAt: 0,
+        latestStateDocApproxSize: 0,
+        latestPickListApproxSize: 0,
+        latestPickListLinesCount: 0
     };
 }
 
@@ -735,8 +779,26 @@ StateManager.prototype.subscribeToState = function (uid) {
     const docRef = this._getStateDocRef(uid);
 
     this.unsubscribeState = docRef.onSnapshot((doc) => {
+        const perf = window.__shelflowPerf;
+        const snapStart = performance.now();
+        perf?.mark('state.snapshot.start', { uid, currentUserId: this.currentUserId });
         if (doc.exists) {
             const data = doc.data();
+            let approxSize = null;
+            try { approxSize = JSON.stringify(data).length; } catch (_) { approxSize = null; }
+            this._diag.latestStateSnapshotAt = Date.now();
+            this._diag.latestStateDocApproxSize = approxSize || 0;
+            perf?.mark('state.snapshot.data', {
+                exists: doc.exists,
+                stateDocSizeApprox: approxSize,
+                mode: data?.mode || null,
+                slotsCount: Object.keys(data?.slots || {}).length,
+                injectListCount: Object.keys(data?.injectList || {}).length,
+                janIndexCount: Object.keys(data?.janIndex || {}).length,
+                userStatesCount: Object.keys(data?.userStates || {}).length,
+                currentPickingNo: data?.userStates?.[this.currentUserId]?.currentPickingNo || null,
+                currentPickListId: this.currentPickListId
+            });
             this._migrateLegacyPickListsIfNeeded(uid, data);
             this._backfillProgressSummaryIfNeeded(uid, data);
             this._backfillProgressCountedCompletedIfNeeded(uid, data);
@@ -750,11 +812,20 @@ StateManager.prototype.subscribeToState = function (uid) {
                     this.subscribeToPickList(currentPickingNo);
                 }
                 this._reconcileLocalUiStateWithRemote(data);
+                perf?.mark('state.onStateChange.before', { hasOnStateChange: !!this.onStateChange });
                 if (this.onStateChange) this.onStateChange(this.state);
+                perf?.mark('state.onStateChange.after', {
+                    durationMs: Math.round(performance.now() - snapStart),
+                    onStateChangeExecuted: !!this.onStateChange
+                });
             }
         } else {
             this.initializeNewSession(uid);
         }
+        perf?.mark('state.snapshot.end', {
+            durationMs: Math.round(performance.now() - snapStart),
+            exists: doc.exists
+        });
     }, (error) => {
         this._logFirestoreError('subscribeToState', error, uid);
     });
@@ -849,25 +920,62 @@ StateManager.prototype.subscribeToPickList = function (listId) {
         return;
     }
     if (this.currentPickListId === normalizedListId && this.unsubscribePickList) return;
+    const perf = window.__shelflowPerf;
+    const previousPickListId = this.currentPickListId;
     this.clearPickListSubscription();
-
     this.currentPickListId = normalizedListId;
+    perf?.mark('pickList.subscribe.start', {
+        normalizedListId,
+        previousPickListId
+    });
     this.currentPickListLoading = true;
     this.currentPickListNotFound = false;
     const docRef = this._getPickListDocRef(this.user.uid, normalizedListId);
     this.unsubscribePickList = docRef.onSnapshot((doc) => {
+        const snapStart = performance.now();
         if (!doc.exists) {
             this.currentPickList = null;
         } else {
             const data = doc.data() || {};
+            const approxSize = JSON.stringify(data || {}).length;
             this.currentPickList = {
                 ...data,
                 lines: this._normalizePickLines(data.lines || [])
             };
+            this._diag.latestPickListApproxSize = approxSize;
+            this._diag.latestPickListLinesCount = Array.isArray(data.lines) ? data.lines.length : 0;
+        }
+        this._diag.latestPickListSnapshotAt = Date.now();
+        const raw = doc.exists ? (doc.data() || null) : null;
+        const approxSize = raw ? JSON.stringify(raw).length : 0;
+        const staleSnapshot = this.currentPickListId !== normalizedListId;
+        perf?.mark('pickList.snapshot', {
+            normalizedListId,
+            exists: doc.exists,
+            approxSize,
+            linesCount: Array.isArray(raw?.lines) ? raw.lines.length : 0,
+            loading: this.currentPickListLoading,
+            currentPickListId: this.currentPickListId,
+            staleSnapshot
+        });
+        if (staleSnapshot) {
+            perf?.mark('pickList.snapshot.stale', {
+                normalizedListId,
+                currentPickListId: this.currentPickListId,
+                approxSize
+            });
+            console.warn('[pickList] stale snapshot detected', {
+                normalizedListId,
+                currentPickListId: this.currentPickListId
+            });
         }
         this.currentPickListLoading = false;
         this.currentPickListNotFound = !doc.exists;
         this._notifyUiOnlyChange();
+        perf?.mark('pickList.snapshot.after', {
+            normalizedListId,
+            durationMs: Math.round(performance.now() - snapStart)
+        });
     }, (error) => {
         this.currentPickListLoading = false;
         console.error('[firestore:subscribeToPickList] failed', error);
@@ -1763,13 +1871,17 @@ StateManager.prototype.selectSlot = function (bayId, subId) {
     if (!pending || pending.status !== "WAITING_SLOT") return;
     if (!this.user) return;
 
+    const perf = window.__shelflowPerf;
     const slotKey = `${bayId}-${subId}`;
     const pendingJan = pending.jan;
+    const opStart = performance.now();
+    perf?.mark('inject.tap.start', { slotKey, janLast4: String(pendingJan || '').slice(-4), pendingRequestId: pending?.requestId || null });
     const pendingRequestId = pending.requestId || null;
     const uid = this.user.uid;
     const docRef = this._getStateDocRef(uid);
 
     const opId = this.setOptimisticSlot(slotKey, pendingJan);
+    perf?.mark('inject.optimisticSlot.set', { slotKey, opId, elapsedMs: Math.round(performance.now() - opStart) });
     this.clearLocalInjectPending();
 
     const isUnsyncedPendingError = (error) => {
@@ -1778,7 +1890,14 @@ StateManager.prototype.selectSlot = function (bayId, subId) {
 
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+    const maxRetries = 5;
     const attemptSelectSlot = async (retryCount) => {
+        const attemptNo = (maxRetries - retryCount) + 1;
+        perf?.mark('inject.transaction.attempt', {
+            slotKey, opId, attemptNo, retryCountRemaining: retryCount,
+            elapsedMs: Math.round(performance.now() - opStart),
+            pendingRequestId, janLast4: String(pendingJan || '').slice(-4)
+        });
         try {
             await this.db.runTransaction(async (transaction) => {
                 const doc = await transaction.get(docRef);
@@ -1825,6 +1944,11 @@ StateManager.prototype.selectSlot = function (bayId, subId) {
             });
         } catch (error) {
             if (isUnsyncedPendingError(error) && retryCount > 0) {
+                perf?.mark('inject.transaction.unsyncedPendingRetry', {
+                    slotKey, opId, attemptNo, retryCountRemaining: retryCount - 1,
+                    elapsedMs: Math.round(performance.now() - opStart),
+                    pendingRequestId, janLast4: String(pendingJan || '').slice(-4)
+                });
                 await sleep(200);
                 return attemptSelectSlot(retryCount - 1);
             }
@@ -1832,9 +1956,20 @@ StateManager.prototype.selectSlot = function (bayId, subId) {
         }
     };
 
-    return attemptSelectSlot(5).then(() => {
+    return attemptSelectSlot(maxRetries).then(() => {
         this.markOptimisticSlotCommitted(slotKey, opId);
+        perf?.mark('inject.transaction.success', {
+            slotKey, opId, attemptNo: null, retryCountRemaining: 0,
+            elapsedMs: Math.round(performance.now() - opStart),
+            pendingRequestId, janLast4: String(pendingJan || '').slice(-4)
+        });
     }).catch((error) => {
+        perf?.mark('inject.transaction.failed', {
+            slotKey, opId, attemptNo: null, retryCountRemaining: 0,
+            elapsedMs: Math.round(performance.now() - opStart),
+            pendingRequestId, janLast4: String(pendingJan || '').slice(-4),
+            code: error?.code, message: error?.message
+        });
         this.rollbackOptimisticInject(opId);
         const wasCancelled =
             pendingRequestId &&

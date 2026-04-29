@@ -16,6 +16,21 @@
 
         let lastRenderedPickingNo = null;
         let lastRenderedAllCompleted = false;
+
+        const perf = window.__shelflowPerf;
+        let renderCountWindow = { startedAt: performance.now(), count: 0, lastCountPerSec: 0 };
+        const countRender = (pageName) => {
+            const now = performance.now();
+            renderCountWindow.count += 1;
+            if (now - renderCountWindow.startedAt > 1000) {
+                const count = renderCountWindow.count;
+                renderCountWindow.lastCountPerSec = count;
+                perf?.mark(`${pageName}.render.rate`, { countPerSec: count });
+                if (count >= 5) console.warn(`[${pageName}] high render rate`, count);
+                renderCountWindow = { startedAt: now, count: 0, lastCountPerSec: count };
+            }
+        };
+
         const stateMgr = new StateManager(
             (state) => render(state),
             (user) => {
@@ -332,16 +347,27 @@
         };
 
         const render = (state) => {
+            const renderStart = performance.now();
+            countRender("pick");
+            const cfg = getConfig(state);
+            const currentUserState = state?.userStates?.[stateMgr.currentUserId] || {};
+            const currentPickingNo = currentUserState.currentPickingNo || null;
+            const currentPickLines = stateMgr.currentPickList?.lines || null;
+            perf?.mark("pick.render.start", {
+                currentPickingNo,
+                currentPickListId: stateMgr.currentPickListId || null,
+                currentPickListLoading: !!stateMgr.currentPickListLoading,
+                currentPickLinesCount: Array.isArray(currentPickLines) ? currentPickLines.length : 0,
+                optimisticPickLineOpsCount: Object.keys(stateMgr.localUiState.optimisticPickLineOps?.[String(currentPickingNo || '')] || {}).length,
+                pickMode: cfg.pickMode,
+                quantityVerification: cfg.quantityVerification
+            });
+            try {
             const progressSummary = state?.progressSummary || { total: 0, completed: 0 };
             updateProgressUi(progressSummary);
             updateUserSelectorUI();
             updateModeUI(state);
-            const cfg = getConfig(state);
-            const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
-            const currentPickingNo = currentUserState.currentPickingNo;
-
             pickTable.innerHTML = '';
-            const currentPickLines = stateMgr.currentPickList?.lines || null;
             if (!currentPickingNo) {
                 lastRenderedPickingNo = currentPickingNo || null;
                 lastRenderedAllCompleted = false;
@@ -425,6 +451,18 @@
             });
 
             restoreFocusIfNeeded(state);
+            } finally {
+                perf?.mark("pick.render.end", {
+                    durationMs: Math.round(performance.now() - renderStart),
+                    currentPickingNo,
+                    currentPickListId: stateMgr.currentPickListId || null,
+                    currentPickListLoading: !!stateMgr.currentPickListLoading,
+                    currentPickLinesCount: Array.isArray(stateMgr.currentPickList?.lines) ? stateMgr.currentPickList.lines.length : 0,
+                    optimisticPickLineOpsCount: Object.keys(stateMgr.localUiState.optimisticPickLineOps?.[String(currentPickingNo || '')] || {}).length,
+                    pickMode: cfg.pickMode,
+                    quantityVerification: cfg.quantityVerification
+                });
+            }
         };
 
         const completeLine = async (index) => {
