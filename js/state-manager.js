@@ -933,21 +933,19 @@ StateManager.prototype.subscribeToPickList = function (listId) {
     const docRef = this._getPickListDocRef(this.user.uid, normalizedListId);
     this.unsubscribePickList = docRef.onSnapshot((doc) => {
         const snapStart = performance.now();
+        const raw = doc.exists ? (doc.data() || {}) : null;
+        const approxSize = raw ? JSON.stringify(raw).length : 0;
         if (!doc.exists) {
             this.currentPickList = null;
         } else {
-            const data = doc.data() || {};
-            const approxSize = JSON.stringify(data || {}).length;
             this.currentPickList = {
-                ...data,
-                lines: this._normalizePickLines(data.lines || [])
+                ...raw,
+                lines: this._normalizePickLines(raw.lines || [])
             };
             this._diag.latestPickListApproxSize = approxSize;
-            this._diag.latestPickListLinesCount = Array.isArray(data.lines) ? data.lines.length : 0;
+            this._diag.latestPickListLinesCount = Array.isArray(raw.lines) ? raw.lines.length : 0;
         }
         this._diag.latestPickListSnapshotAt = Date.now();
-        const raw = doc.exists ? (doc.data() || null) : null;
-        const approxSize = raw ? JSON.stringify(raw).length : 0;
         const staleSnapshot = this.currentPickListId !== normalizedListId;
         perf?.mark('pickList.snapshot', {
             normalizedListId,

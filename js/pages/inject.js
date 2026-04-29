@@ -487,7 +487,6 @@
         const render = (state) => {
             const renderStart = performance.now();
             countRender("inject");
-            const mergedSlots = getMergedSlots(state);
             const totalBays = state?.config?.bays || 9;
             const pendingJan = stateMgr.getEffectiveInjectPendingForCurrentUser(state)?.jan || null;
             perf?.mark("inject.render.start", {
@@ -499,6 +498,7 @@
                 optimisticSlotsCount: Object.keys(stateMgr.localUiState.optimisticSlots || {}).length
             });
             try {
+            const mergedSlots = getMergedSlots(state);
             bayGrid.innerHTML = '';
             for (let b = 1; b <= totalBays; b++) {
                 const splits = state.splits?.[b];
