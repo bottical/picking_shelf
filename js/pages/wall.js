@@ -71,6 +71,21 @@
         let lastScannedAt = 0;
         let scannerRunning = false;
 
+
+        const perf = window.__shelflowPerf;
+        let renderCountWindow = { startedAt: performance.now(), count: 0, lastCountPerSec: 0 };
+        const countRender = (pageName) => {
+            const now = performance.now();
+            renderCountWindow.count += 1;
+            if (now - renderCountWindow.startedAt > 1000) {
+                const count = renderCountWindow.count;
+                renderCountWindow.lastCountPerSec = count;
+                perf?.mark(`${pageName}.render.rate`, { countPerSec: count });
+                if (count >= 5) console.warn(`[${pageName}] high render rate`, count);
+                renderCountWindow = { startedAt: now, count: 0, lastCountPerSec: count };
+            }
+        };
+
         const stateMgr = new StateManager(
             (state) => {
                 render(state);
@@ -1512,13 +1527,34 @@
         };
 
         const render = (state) => {
-            if (!state) return;
-            updateInstructionBanner(state);
-            const config = state.config || {};
-            const verifyConfig = getVerifyConfig(state);
+            const renderStart = performance.now();
+            countRender("wall");
+            const config = state?.config || {};
             const deviceSettings = getDeviceWallSettings();
             const displayScale = ['S', 'M', 'L'].includes(deviceSettings.displayScale) ? deviceSettings.displayScale : 'M';
             const denseTextMode = deviceSettings.denseTextMode !== false;
+            const currentUserState = state?.userStates?.[stateMgr.currentUserId] || {};
+            const activePickCount = Object.keys(currentUserState.activePick || {}).length;
+            perf?.mark("wall.render.start", {
+                mode: state?.mode || null,
+                viewMode: config.viewMode || null,
+                bays: config.bays || 0,
+                multiRows: config.multiRows || null,
+                multiCols: config.multiCols || null,
+                currentSingleBayId,
+                slotsCount: Object.keys(state?.slots || {}).length,
+                splitsCount: Object.keys(state?.splits || {}).length,
+                activePickCount,
+                optimisticSlotsCount: Object.keys(stateMgr.localUiState.optimisticSlots || {}).length,
+                optimisticPickCompletionsCount: Object.keys(stateMgr.localUiState.optimisticPickCompletions || {}).length,
+                scannerRunning: !!scannerRunning,
+                displayScale,
+                denseTextMode
+            });
+            try {
+            if (!state) return;
+            updateInstructionBanner(state);
+            const verifyConfig = getVerifyConfig(state);
             const getViewMaxSplit = () => {
                 if (currentSingleBayId !== null) {
                     if (currentSingleBayId === 'unallocated') return 1;
@@ -1752,6 +1788,25 @@
                     render(stateMgr.state);
                 };
                 selectorViewContainer.appendChild(othersBtn);
+            }
+            } finally {
+                perf?.mark("wall.render.end", {
+                    durationMs: Math.round(performance.now() - renderStart),
+                    mode: state?.mode || null,
+                    viewMode: (state?.config || {}).viewMode || null,
+                    bays: (state?.config || {}).bays || 0,
+                    multiRows: (state?.config || {}).multiRows || null,
+                    multiCols: (state?.config || {}).multiCols || null,
+                    currentSingleBayId,
+                    slotsCount: Object.keys(state?.slots || {}).length,
+                    splitsCount: Object.keys(state?.splits || {}).length,
+                    activePickCount: Object.keys((state?.userStates?.[stateMgr.currentUserId] || {}).activePick || {}).length,
+                    optimisticSlotsCount: Object.keys(stateMgr.localUiState.optimisticSlots || {}).length,
+                    optimisticPickCompletionsCount: Object.keys(stateMgr.localUiState.optimisticPickCompletions || {}).length,
+                    scannerRunning: !!scannerRunning,
+                    displayScale: ['S', 'M', 'L'].includes(getDeviceWallSettings().displayScale) ? getDeviceWallSettings().displayScale : 'M',
+                    denseTextMode: getDeviceWallSettings().denseTextMode !== false
+                });
             }
         };
 
