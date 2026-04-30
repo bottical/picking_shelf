@@ -383,9 +383,16 @@
                 restoreFocusIfNeeded(state);
                 return;
             }
-            if (stateMgr.currentPickListLoading) {
-                pickTable.innerHTML = `<tr><td colspan="5" style="padding:3rem; text-align:center; color:var(--text-muted);">読込中...</td></tr>`;
-                currentListTitle.textContent = `ピッキングNo. ${currentPickingNo} を読込中...`;
+            const isPickListSwitching =
+                !!currentPickingNo &&
+                (
+                    stateMgr.currentPickListLoading ||
+                    !stateMgr.currentPickListId ||
+                    String(stateMgr.currentPickListId) !== String(currentPickingNo)
+                );
+            if (isPickListSwitching) {
+                pickTable.innerHTML = `<tr><td colspan="5" style="padding:3rem; text-align:center; color:var(--text-muted);">ピッキングリストを同期しています...</td></tr>`;
+                currentListTitle.textContent = `ピッキングNo. ${currentPickingNo} を同期中...`;
                 restoreFocusIfNeeded(state);
                 return;
             }
