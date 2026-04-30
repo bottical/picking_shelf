@@ -261,6 +261,7 @@
         };
 
         const consumeByJan = async (inputJan) => {
+            const janOpStart = performance.now();
             const jan = stateMgr.normalizeJanValue(inputJan);
             if (!jan) return;
             const currentUserState = stateMgr.state?.userStates?.[stateMgr.currentUserId] || {};
@@ -271,6 +272,8 @@
                 return;
             }
             const cfg = getConfig();
+            const quantityVerification = !!cfg.quantityVerification;
+            perf?.mark('pick.verify.jan.start', { currentPickingNo, lineIndex: null, janLast4: jan.slice(-4), quantityVerification, elapsedMs: 0 });
             const remoteLines = stateMgr.currentPickList?.lines || [];
             const mergedLines = stateMgr.getMergedPickLines(currentPickingNo, remoteLines);
             const matched = findNextConsumableLineIndex(mergedLines, jan);
@@ -286,6 +289,7 @@
 
             const nextLine = buildOptimisticConsumedLine(mergedLines[matched.index], cfg.quantityVerification);
             const opId = stateMgr.setOptimisticPickLine(currentPickingNo, matched.index, nextLine);
+            perf?.mark('pick.verify.jan.optimistic.set', { currentPickingNo, lineIndex: matched.index, janLast4: jan.slice(-4), quantityVerification, elapsedMs: Math.round(performance.now() - janOpStart) });
             AudioManager.playStartSound();
             
             if (nextLine.status === 'DONE') {
@@ -324,11 +328,13 @@
                 stateMgr.clearOptimisticPickLine(currentPickingNo, matched.index, opId);
                 AudioManager.playErrorSound();
                 showJanFeedback(result?.result === 'already_done' ? '既に完了済みです' : 'このピッキングNo.の対象外です', 'error');
+                perf?.mark('pick.verify.jan.failed', { currentPickingNo, lineIndex: matched.index, janLast4: jan.slice(-4), quantityVerification, elapsedMs: Math.round(performance.now() - janOpStart), result: result?.result || 'not_found' });
             }).catch((e) => {
                 console.error('consumeByJan failed:', e);
                 stateMgr.clearOptimisticPickLine(currentPickingNo, matched.index, opId);
                 AudioManager.playErrorSound();
                 showJanFeedback('JAN処理に失敗しました', 'error');
+                perf?.mark('pick.verify.jan.failed', { currentPickingNo, lineIndex: matched.index, janLast4: jan.slice(-4), quantityVerification, elapsedMs: Math.round(performance.now() - janOpStart), message: e?.message || String(e) });
                 render(stateMgr.state || {});
             });
         };
@@ -466,16 +472,24 @@
         };
 
         const completeLine = async (index) => {
+            const opStart = performance.now();
             const currentUserState = stateMgr.state.userStates?.[stateMgr.currentUserId];
             const currentPickingNo = currentUserState?.currentPickingNo;
             if (!currentPickingNo) return;
+            const lineIndex = Number(index);
+            const line = stateMgr.getMergedPickLines(currentPickingNo, stateMgr.currentPickList?.lines || [])[lineIndex] || {};
+            const janLast4 = String(line?.jan || '').slice(-4);
+            const quantityVerification = !!getConfig().quantityVerification;
+            perf?.mark('pick.complete.button.start', { currentPickingNo, lineIndex, janLast4, quantityVerification, elapsedMs: 0 });
 
             try {
-                await stateMgr.completePickLine(currentPickingNo, Number(index));
+                await stateMgr.completePickLine(currentPickingNo, lineIndex);
+                perf?.mark('pick.complete.button.success', { currentPickingNo, lineIndex, janLast4, quantityVerification, elapsedMs: Math.round(performance.now() - opStart) });
             } catch (e) {
                 console.error('completeLine failed:', e);
                 AudioManager?.playErrorSound?.();
                 showInlineError('完了処理に失敗しました。通信状態をご確認ください。');
+                perf?.mark('pick.complete.button.failed', { currentPickingNo, lineIndex, janLast4, quantityVerification, elapsedMs: Math.round(performance.now() - opStart), message: e?.message || String(e) });
             }
         };
 
