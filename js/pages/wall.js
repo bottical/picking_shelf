@@ -964,18 +964,28 @@
             const currentUserState = state.userStates?.[stateMgr.currentUserId] || {};
             const listId = currentUserState.currentPickingNo;
             if (!listId) return;
-            if (stateMgr.isOptimisticPickCompletionActive(slotKey, state)) return;
+            const activePickCount = Object.values(currentUserState.activePick || {}).filter((entry) => (Number(entry?.pendingQty) || 0) > 0).length;
+            const tapStart = performance.now();
+            perf?.mark('wall.pick.tap.start', { currentPickingNo: listId, slotKey, activePickCount, elapsedMs: 0 });
+            if (stateMgr.isOptimisticPickCompletionActive(slotKey, state)) {
+                perf?.mark('wall.pick.tap.ignored', { currentPickingNo: listId, slotKey, activePickCount, elapsedMs: Math.round(performance.now() - tapStart) });
+                return;
+            }
             const opId = stateMgr.setOptimisticPickCompletion(slotKey, listId);
+            perf?.mark('wall.pick.optimistic.set', { currentPickingNo: listId, slotKey, activePickCount, elapsedMs: Math.round(performance.now() - tapStart) });
             if (!opId) return;
             AudioManager.playStartSound();
             try {
+                perf?.mark('wall.pick.complete.before', { currentPickingNo: listId, slotKey, activePickCount, elapsedMs: Math.round(performance.now() - tapStart) });
                 await stateMgr.completePickBySlot(listId, slotKey);
                 stateMgr.markOptimisticPickCompletionCommitted(slotKey, opId);
+                perf?.mark('wall.pick.complete.after', { currentPickingNo: listId, slotKey, activePickCount, elapsedMs: Math.round(performance.now() - tapStart) });
             } catch (error) {
                 console.error('ピッキング完了処理に失敗しました:', error);
                 stateMgr.clearOptimisticPickCompletion(slotKey, opId);
                 stateMgr.setTransientWallError(slotKey, '通信失敗。もう一度タップしてください');
                 AudioManager.playErrorSound();
+                perf?.mark('wall.pick.complete.failed', { currentPickingNo: listId, slotKey, activePickCount, elapsedMs: Math.round(performance.now() - tapStart), message: error?.message || String(error) });
             }
         };
 

@@ -1643,11 +1643,20 @@ StateManager.prototype.reset = function () {
 
 StateManager.prototype.completePickLine = function (listId, index) {
     if (!this.user || !listId) return Promise.reject("Not authenticated");
+    const perf = window.__shelflowPerf;
     const uid = this.user.uid;
+    const txStart = performance.now();
+    const txMetrics = { linesCount: 0, activePickCount: 0, janLast4: null };
+    perf?.mark('pick.transaction.start', { listId, slotKey: null, lineIndex: index, janLast4: null, linesCount: 0, activePickCount: 0, elapsedMs: 0 });
     return this.db.runTransaction(async (transaction) => {
         const listRef = this._getPickListDocRef(uid, listId);
         const stateRef = this._getStateDocRef(uid);
-        const [listDoc, stateDoc] = await Promise.all([transaction.get(listRef), transaction.get(stateRef)]);
+        perf?.mark('pick.transaction.getPickList.start', { listId, slotKey: null, lineIndex: index, janLast4: null, linesCount: 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
+        const listDoc = await transaction.get(listRef);
+        perf?.mark('pick.transaction.getPickList.end', { listId, slotKey: null, lineIndex: index, janLast4: null, linesCount: Array.isArray(listDoc.data()?.lines) ? listDoc.data().lines.length : 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
+        perf?.mark('pick.transaction.getState.start', { listId, slotKey: null, lineIndex: index, janLast4: null, linesCount: Array.isArray(listDoc.data()?.lines) ? listDoc.data().lines.length : 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
+        const stateDoc = await transaction.get(stateRef);
+        perf?.mark('pick.transaction.getState.end', { listId, slotKey: null, lineIndex: index, janLast4: null, linesCount: Array.isArray(listDoc.data()?.lines) ? listDoc.data().lines.length : 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
         if (!listDoc.exists || !stateDoc.exists) return;
         const pickListData = listDoc.data() || {};
         const lines = this._normalizePickLines(pickListData.lines || []);
@@ -1669,18 +1678,39 @@ StateManager.prototype.completePickLine = function (listId, index) {
         };
         const counted = this._applyCompletedCountOnFirstCompletion(stateUpdates, pickListData, beforeLines, lines);
         if (counted) listUpdates.progressCountedCompleted = true;
+        const activePickCount = Object.values(activePick || {}).filter((entry) => (Number(entry?.pendingQty) || 0) > 0).length;
+        txMetrics.linesCount = lines.length;
+        txMetrics.activePickCount = activePickCount;
+        txMetrics.janLast4 = String(lines[index]?.jan || '').slice(-4);
+        perf?.mark('pick.transaction.updateQueued', { listId, slotKey: null, lineIndex: index, janLast4: txMetrics.janLast4, linesCount: txMetrics.linesCount, activePickCount, elapsedMs: Math.round(performance.now() - txStart) });
         transaction.update(listRef, listUpdates);
         transaction.update(stateRef, stateUpdates);
+    }).then((result) => {
+        perf?.mark('pick.transaction.success', { listId, slotKey: null, lineIndex: index, janLast4: txMetrics.janLast4, linesCount: txMetrics.linesCount, activePickCount: txMetrics.activePickCount, elapsedMs: Math.round(performance.now() - txStart) });
+        return result;
+    }).catch((error) => {
+        perf?.mark('pick.transaction.failed', { listId, slotKey: null, lineIndex: index, janLast4: null, linesCount: 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart), message: error?.message || String(error) });
+        throw error;
     });
 };
 
 StateManager.prototype.completePickBySlot = function (listId, slotKey) {
     if (!this.user || !listId) return Promise.reject("Not authenticated");
+    const perf = window.__shelflowPerf;
     const uid = this.user.uid;
+    const txStart = performance.now();
+    const txMetrics = { linesCount: 0, activePickCount: 0 };
+    perf?.mark('pick.transaction.start', { listId, slotKey, lineIndex: null, janLast4: null, linesCount: 0, activePickCount: 0, elapsedMs: 0 });
     return this.db.runTransaction(async (transaction) => {
         const listRef = this._getPickListDocRef(uid, listId);
         const stateRef = this._getStateDocRef(uid);
-        const [listDoc, stateDoc] = await Promise.all([transaction.get(listRef), transaction.get(stateRef)]);
+        perf?.mark('pick.transaction.getPickList.start', { listId, slotKey, lineIndex: null, janLast4: null, linesCount: 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
+        const listDoc = await transaction.get(listRef);
+        const rawLines = listDoc.data()?.lines || [];
+        perf?.mark('pick.transaction.getPickList.end', { listId, slotKey, lineIndex: null, janLast4: null, linesCount: Array.isArray(rawLines) ? rawLines.length : 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
+        perf?.mark('pick.transaction.getState.start', { listId, slotKey, lineIndex: null, janLast4: null, linesCount: Array.isArray(rawLines) ? rawLines.length : 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
+        const stateDoc = await transaction.get(stateRef);
+        perf?.mark('pick.transaction.getState.end', { listId, slotKey, lineIndex: null, janLast4: null, linesCount: Array.isArray(rawLines) ? rawLines.length : 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
         if (!listDoc.exists || !stateDoc.exists) return;
         const data = stateDoc.data() || {};
         const janIndex = data.janIndex || {};
@@ -1697,21 +1727,26 @@ StateManager.prototype.completePickBySlot = function (listId, slotKey) {
             return { ...line, checkedQty: targetQty, status: 'DONE' };
         });
         if (!changed) return;
-        const listUpdates = {
-            lines: nextLines,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
+        const listUpdates = { lines: nextLines, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
         const activePick = this._buildActivePickFromLines(listId, nextLines, janIndex);
-        const stateUpdates = {
-            [`userStates.${this.currentUserId}.activePick`]: activePick,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
+        const stateUpdates = { [`userStates.${this.currentUserId}.activePick`]: activePick, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
         const counted = this._applyCompletedCountOnFirstCompletion(stateUpdates, pickListData, beforeLines, nextLines);
         if (counted) listUpdates.progressCountedCompleted = true;
+        const activePickCount = Object.values(activePick || {}).filter((entry) => (Number(entry?.pendingQty) || 0) > 0).length;
+        txMetrics.linesCount = nextLines.length;
+        txMetrics.activePickCount = activePickCount;
+        perf?.mark('pick.transaction.updateQueued', { listId, slotKey, lineIndex: null, janLast4: null, linesCount: txMetrics.linesCount, activePickCount, elapsedMs: Math.round(performance.now() - txStart) });
         transaction.update(listRef, listUpdates);
         transaction.update(stateRef, stateUpdates);
+    }).then((result) => {
+        perf?.mark('pick.transaction.success', { listId, slotKey, lineIndex: null, janLast4: null, linesCount: txMetrics.linesCount, activePickCount: txMetrics.activePickCount, elapsedMs: Math.round(performance.now() - txStart) });
+        return result;
+    }).catch((error) => {
+        perf?.mark('pick.transaction.failed', { listId, slotKey, lineIndex: null, janLast4: null, linesCount: 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart), message: error?.message || String(error) });
+        throw error;
     });
 };
+
 
 // Login/Logout methods
 StateManager.prototype.login = function (email, password) {
@@ -1778,14 +1813,24 @@ StateManager.prototype._isPickListCompleted = function (lines) {
 
 StateManager.prototype.consumePickByJan = function (listId, jan, options = {}) {
     if (!this.user || !listId || !jan) return Promise.reject("Not authenticated");
+    const perf = window.__shelflowPerf;
     const uid = this.user.uid;
+    const txStart = performance.now();
+    const txMetrics = { linesCount: 0, activePickCount: 0, lineIndex: null };
     const normalizedJan = this.normalizeJanValue(jan);
     if (!normalizedJan) return Promise.resolve({ result: 'not_found' });
     const forceQuantityVerification = options?.quantityVerification;
+    perf?.mark('pick.transaction.start', { listId, slotKey: null, lineIndex: null, janLast4: normalizedJan.slice(-4), linesCount: 0, activePickCount: 0, elapsedMs: 0 });
     return this.db.runTransaction(async (transaction) => {
         const listRef = this._getPickListDocRef(uid, listId);
         const stateRef = this._getStateDocRef(uid);
-        const [listDoc, stateDoc] = await Promise.all([transaction.get(listRef), transaction.get(stateRef)]);
+        perf?.mark('pick.transaction.getPickList.start', { listId, slotKey: null, lineIndex: null, janLast4: normalizedJan.slice(-4), linesCount: 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
+        const listDoc = await transaction.get(listRef);
+        const rawLines = listDoc.data()?.lines || [];
+        perf?.mark('pick.transaction.getPickList.end', { listId, slotKey: null, lineIndex: null, janLast4: normalizedJan.slice(-4), linesCount: Array.isArray(rawLines) ? rawLines.length : 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
+        perf?.mark('pick.transaction.getState.start', { listId, slotKey: null, lineIndex: null, janLast4: normalizedJan.slice(-4), linesCount: Array.isArray(rawLines) ? rawLines.length : 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
+        const stateDoc = await transaction.get(stateRef);
+        perf?.mark('pick.transaction.getState.end', { listId, slotKey: null, lineIndex: null, janLast4: normalizedJan.slice(-4), linesCount: Array.isArray(rawLines) ? rawLines.length : 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
         if (!listDoc.exists || !stateDoc.exists) return { result: 'not_found' };
 
         const stateData = stateDoc.data() || {};
@@ -1840,6 +1885,11 @@ StateManager.prototype.consumePickByJan = function (listId, jan, options = {}) {
         };
         const counted = this._applyCompletedCountOnFirstCompletion(stateUpdates, pickListData, beforeLines, nextLines);
         if (counted) listUpdates.progressCountedCompleted = true;
+        const activePickCount = Object.values(activePick || {}).filter((entry) => (Number(entry?.pendingQty) || 0) > 0).length;
+        txMetrics.linesCount = nextLines.length;
+        txMetrics.activePickCount = activePickCount;
+        txMetrics.lineIndex = targetIndex;
+        perf?.mark('pick.transaction.updateQueued', { listId, slotKey: null, lineIndex: targetIndex, janLast4: normalizedJan.slice(-4), linesCount: txMetrics.linesCount, activePickCount, elapsedMs: Math.round(performance.now() - txStart) });
         transaction.update(listRef, listUpdates);
         transaction.update(stateRef, stateUpdates);
 
@@ -1849,6 +1899,12 @@ StateManager.prototype.consumePickByJan = function (listId, jan, options = {}) {
             nextLines,
             index: targetIndex
         };
+    }).then((result) => {
+        perf?.mark('pick.transaction.success', { listId, slotKey: null, lineIndex: result?.index ?? txMetrics.lineIndex, janLast4: normalizedJan.slice(-4), linesCount: txMetrics.linesCount, activePickCount: txMetrics.activePickCount, elapsedMs: Math.round(performance.now() - txStart) });
+        return result;
+    }).catch((error) => {
+        perf?.mark('pick.transaction.failed', { listId, slotKey: null, lineIndex: null, janLast4: normalizedJan.slice(-4), linesCount: 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart), message: error?.message || String(error) });
+        throw error;
     });
 };
 
