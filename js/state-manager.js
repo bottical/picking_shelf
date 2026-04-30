@@ -1653,12 +1653,15 @@ StateManager.prototype.completePickLine = function (listId, index) {
         const stateRef = this._getStateDocRef(uid);
         perf?.mark('pick.transaction.getPickList.start', { listId, slotKey: null, lineIndex: index, janLast4: null, linesCount: 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
         const listDoc = await transaction.get(listRef);
-        perf?.mark('pick.transaction.getPickList.end', { listId, slotKey: null, lineIndex: index, janLast4: null, linesCount: Array.isArray(listDoc.data()?.lines) ? listDoc.data().lines.length : 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
-        perf?.mark('pick.transaction.getState.start', { listId, slotKey: null, lineIndex: index, janLast4: null, linesCount: Array.isArray(listDoc.data()?.lines) ? listDoc.data().lines.length : 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
-        const stateDoc = await transaction.get(stateRef);
-        perf?.mark('pick.transaction.getState.end', { listId, slotKey: null, lineIndex: index, janLast4: null, linesCount: Array.isArray(listDoc.data()?.lines) ? listDoc.data().lines.length : 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
-        if (!listDoc.exists || !stateDoc.exists) return;
-        const pickListData = listDoc.data() || {};
+        const pickListData = listDoc.exists ? (listDoc.data() || {}) : {};
+        const rawLines = pickListData.lines || [];
+        perf?.mark('pick.transaction.getPickList.end', { listId, slotKey: null, lineIndex: index, janLast4: null, linesCount: Array.isArray(rawLines) ? rawLines.length : 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
+        perf?.mark('pick.transaction.getState.skipped', { listId, slotKey: null, lineIndex: index, janLast4: null, linesCount: Array.isArray(rawLines) ? rawLines.length : 0, activePickCount: 0, reason: 'activePick_built_from_current_memory_state', elapsedMs: Math.round(performance.now() - txStart) });
+        // NOTE: activePick is rebuilt without reading states/current in this transaction.
+        // This optimization assumes slot placement (janIndex/slots) is mostly stable during picking.
+        // If inject and pick run concurrently, activePick can temporarily reflect stale janIndex.
+        // Source of truth is pickLists/{listId}.lines; activePick is derived UI state.
+        if (!listDoc.exists) return;
         const lines = this._normalizePickLines(pickListData.lines || []);
         if (!lines[index] || this._isLineCompleted(lines[index])) return;
         const beforeLines = [...lines];
@@ -1669,8 +1672,7 @@ StateManager.prototype.completePickLine = function (listId, index) {
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         };
 
-        const data = stateDoc.data() || {};
-        const janIndex = data.janIndex || {};
+        const janIndex = this.state?.janIndex || {};
         const activePick = this._buildActivePickFromLines(listId, lines, janIndex);
         const stateUpdates = {
             [`userStates.${this.currentUserId}.activePick`]: activePick,
@@ -1706,15 +1708,12 @@ StateManager.prototype.completePickBySlot = function (listId, slotKey) {
         const stateRef = this._getStateDocRef(uid);
         perf?.mark('pick.transaction.getPickList.start', { listId, slotKey, lineIndex: null, janLast4: null, linesCount: 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
         const listDoc = await transaction.get(listRef);
-        const rawLines = listDoc.data()?.lines || [];
+        const pickListData = listDoc.exists ? (listDoc.data() || {}) : {};
+        const rawLines = pickListData.lines || [];
         perf?.mark('pick.transaction.getPickList.end', { listId, slotKey, lineIndex: null, janLast4: null, linesCount: Array.isArray(rawLines) ? rawLines.length : 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
-        perf?.mark('pick.transaction.getState.start', { listId, slotKey, lineIndex: null, janLast4: null, linesCount: Array.isArray(rawLines) ? rawLines.length : 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
-        const stateDoc = await transaction.get(stateRef);
-        perf?.mark('pick.transaction.getState.end', { listId, slotKey, lineIndex: null, janLast4: null, linesCount: Array.isArray(rawLines) ? rawLines.length : 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
-        if (!listDoc.exists || !stateDoc.exists) return;
-        const data = stateDoc.data() || {};
-        const janIndex = data.janIndex || {};
-        const pickListData = listDoc.data() || {};
+        perf?.mark('pick.transaction.getState.skipped', { listId, slotKey, lineIndex: null, janLast4: null, linesCount: Array.isArray(rawLines) ? rawLines.length : 0, activePickCount: 0, reason: 'activePick_built_from_current_memory_state', elapsedMs: Math.round(performance.now() - txStart) });
+        if (!listDoc.exists) return;
+        const janIndex = this.state?.janIndex || {};
         const lines = this._normalizePickLines(pickListData.lines || []);
         const beforeLines = [...lines];
         let changed = false;
@@ -1826,20 +1825,21 @@ StateManager.prototype.consumePickByJan = function (listId, jan, options = {}) {
         const stateRef = this._getStateDocRef(uid);
         perf?.mark('pick.transaction.getPickList.start', { listId, slotKey: null, lineIndex: null, janLast4: normalizedJan.slice(-4), linesCount: 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
         const listDoc = await transaction.get(listRef);
-        const rawLines = listDoc.data()?.lines || [];
+        const pickListData = listDoc.exists ? (listDoc.data() || {}) : {};
+        const rawLines = pickListData.lines || [];
         perf?.mark('pick.transaction.getPickList.end', { listId, slotKey: null, lineIndex: null, janLast4: normalizedJan.slice(-4), linesCount: Array.isArray(rawLines) ? rawLines.length : 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
-        perf?.mark('pick.transaction.getState.start', { listId, slotKey: null, lineIndex: null, janLast4: normalizedJan.slice(-4), linesCount: Array.isArray(rawLines) ? rawLines.length : 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
-        const stateDoc = await transaction.get(stateRef);
-        perf?.mark('pick.transaction.getState.end', { listId, slotKey: null, lineIndex: null, janLast4: normalizedJan.slice(-4), linesCount: Array.isArray(rawLines) ? rawLines.length : 0, activePickCount: 0, elapsedMs: Math.round(performance.now() - txStart) });
-        if (!listDoc.exists || !stateDoc.exists) return { result: 'not_found' };
+        perf?.mark('pick.transaction.getState.skipped', { listId, slotKey: null, lineIndex: null, janLast4: normalizedJan.slice(-4), linesCount: Array.isArray(rawLines) ? rawLines.length : 0, activePickCount: 0, reason: 'activePick_built_from_current_memory_state', elapsedMs: Math.round(performance.now() - txStart) });
+        // NOTE: activePick is rebuilt without reading states/current in this transaction.
+        // This optimization assumes slot placement (janIndex/slots) is mostly stable during picking.
+        // If inject and pick run concurrently, activePick can temporarily reflect stale janIndex.
+        // Source of truth is pickLists/{listId}.lines; activePick is derived UI state.
+        if (!listDoc.exists) return { result: 'not_found' };
 
-        const stateData = stateDoc.data() || {};
-        const janIndex = stateData.janIndex || {};
-        const config = stateData.config || {};
+        const janIndex = this.state?.janIndex || {};
+        const config = this.state?.config || {};
         const quantityVerification = typeof forceQuantityVerification === 'boolean'
             ? forceQuantityVerification
             : !!config.quantityVerification;
-        const pickListData = listDoc.data() || {};
         const lines = this._normalizePickLines(pickListData.lines || []);
         const beforeLines = [...lines];
 
