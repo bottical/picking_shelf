@@ -1577,8 +1577,17 @@ StateManager.prototype.startPicking = function (listId, activePickData) {
 StateManager.prototype.resetPreserveConfig = function () {
     if (!this.user) return Promise.reject("Not authenticated");
 
-    const current = this.state || {};
+    if (!this.state || !this.state.config) {
+        return Promise.reject(new Error("状態を読み込み中です。少し待ってから再度リセットしてください。"));
+    }
+
+    const current = this.state;
     const currentConfig = current.config || {};
+
+    if (!['portrait', 'landscape'].includes(currentConfig.orientation)) {
+        return Promise.reject(new Error("縦横設定を取得できませんでした。状態読込後に再度リセットしてください。"));
+    }
+
     const totalBays = currentConfig.bays || 9;
 
     const splits = {};
@@ -1592,7 +1601,7 @@ StateManager.prototype.resetPreserveConfig = function () {
             bays: totalBays,
             maxSplit: currentConfig.maxSplit || 6,
             viewMode: currentConfig.viewMode || 'multi',
-            orientation: currentConfig.orientation || 'landscape',
+            orientation: currentConfig.orientation,
             multiRows: currentConfig.multiRows || 3,
             multiCols: currentConfig.multiCols || 3,
             showOthers: currentConfig.showOthers !== false,

@@ -10,6 +10,17 @@
         const pickListSourceCard = document.getElementById('pickListSourceCard');
         const pickListSourceName = document.getElementById('pickListSourceName');
         const pickListSourceMeta = document.getElementById('pickListSourceMeta');
+        const resetBtn = document.getElementById('resetBtn');
+        let isStateReady = false;
+        const updateResetButtonState = () => {
+            if (!resetBtn) return;
+            resetBtn.disabled = !isStateReady;
+            resetBtn.title = isStateReady
+                ? ''
+                : '状態を読み込み中です。少し待ってから操作してください。';
+            resetBtn.style.opacity = isStateReady ? '1' : '0.45';
+            resetBtn.style.cursor = isStateReady ? 'pointer' : 'not-allowed';
+        };
 
         const updatePickListSourceUi = (state) => {
             if (!pickListSourceCard || !pickListSourceName || !pickListSourceMeta) return;
@@ -38,6 +49,8 @@
 
         const stateMgr = new StateManager(
             (state) => {
+                isStateReady = !!(state && state.config);
+                updateResetButtonState();
                 updatePickListSourceUi(state);
             },
             (user) => {
@@ -48,9 +61,13 @@
                     loginSection.classList.add('hidden');
                     menuSection.classList.remove('hidden');
                     userEmail.textContent = user.email;
+                    isStateReady = false;
+                    updateResetButtonState();
                 } else {
                     loginSection.classList.remove('hidden');
                     menuSection.classList.add('hidden');
+                    isStateReady = false;
+                    updateResetButtonState();
                     updatePickListSourceUi(null);
                 }
             }
@@ -79,7 +96,14 @@
             });
         });
 
-        document.getElementById('resetBtn').addEventListener('click', async () => {
+        updateResetButtonState();
+
+        resetBtn?.addEventListener('click', async () => {
+            if (!isStateReady || !stateMgr.state || !stateMgr.state.config) {
+                alert("状態を読み込み中です。少し待ってから再度リセットしてください。");
+                return;
+            }
+
             if (confirm("全てのデータを初期化してもよろしいですか？")) {
                 try {
                     await stateMgr.resetPreserveConfig();
