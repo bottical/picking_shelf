@@ -4,6 +4,7 @@
     const mgr = new SortStateManager(() => { }, (u) => { if (!u) location.href = 'index.html'; });
     const msg = $('msg');
     const preview = $('preview');
+    const warningsPreview = $('warningsPreview');
 
     const readRequiredColumn = (id, label) => {
       const raw = String($(id).value || '').trim();
@@ -64,6 +65,8 @@
     $('importBtn').onclick = async () => {
       try {
         msg.textContent = '';
+        preview.textContent = '';
+        warningsPreview.textContent = '警告はありません';
         const file = $('csvFile').files[0];
         if (!file) throw new Error('CSV/Excelファイルを選択してください');
 
@@ -102,8 +105,7 @@
           if (qty < 0) rowErrors.push(`${i + 1}行目: 数量がマイナス`);
           if (rowErrors.length) { errors.push(...rowErrors); continue; }
 
-          if (!productLabel) warnings.push(`${i + 1}行目: 商品表示名空欄`);
-          if (!destinationCode) warnings.push(`${i + 1}行目: 仕分け先コード空欄`);
+          if (cols.label !== null && !productLabel) warnings.push(`${i + 1}行目: 商品表示名空欄`);
           if (qty === 0) warnings.push(`${i + 1}行目: 数量0`);
           if (qty <= 0) continue;
 
@@ -156,6 +158,11 @@
           items
         });
 
+        const visibleWarnings = warnings.slice(0, 20);
+        const hiddenWarningCount = warnings.length - visibleWarnings.length;
+        warningsPreview.textContent = warnings.length
+          ? `${visibleWarnings.join('\n')}${hiddenWarningCount > 0 ? `\nほか${hiddenWarningCount}件` : ''}`
+          : '警告はありません';
         preview.textContent = `バッチ名: ${batchName}\nSKU数: ${Object.keys(items).length}\n仕分け先数: ${Object.keys(destinationMap).length}\n総数量: ${totalQty}\n警告件数: ${warnings.length}\n${Object.values(destinationMap).map((d) => `No.${String(d.displayOrder).padStart(3, '0')} ${d.destinationName}`).join('\n')}`;
         msg.style.color = 'var(--success)';
         msg.textContent = '取込完了';
