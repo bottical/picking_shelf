@@ -1,17 +1,32 @@
 (function () {
   document.addEventListener('DOMContentLoaded', () => {
     const $ = (id) => document.getElementById(id);
+    const SORT_COLORS = [
+      '#2563eb',
+      '#dc2626',
+      '#16a34a',
+      '#f59e0b',
+      '#7c3aed',
+      '#0891b2',
+      '#db2777',
+      '#65a30d'
+    ];
     const deviceId = localStorage.getItem('sortDeviceId') || crypto.randomUUID();
     localStorage.setItem('sortDeviceId', deviceId);
 
     let snapshot = null;
     const mgr = new SortStateManager((s) => { snapshot = s; render(); }, (u) => { if (!u) location.href = 'index.html'; });
 
+    const escapeHtml = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    const getSortColor = (displayOrder) => SORT_COLORS[(Math.max(1, Number(displayOrder || 1)) - 1) % SORT_COLORS.length];
+    const getDisplayScale = () => localStorage.getItem('sortDisplayScale') || 'M';
+
     $('toggleCfg').onclick = () => $('cfgWrap').classList.toggle('open');
     $('start').value = localStorage.getItem('sortSlotStartIndex') || 1;
     $('count').value = localStorage.getItem('sortSlotCount') || 4;
-    $('scale').value = localStorage.getItem('sortDisplayScale') || 'M';
-    const escapeHtml = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    $('scale').value = getDisplayScale();
+    document.body.dataset.sortScale = getDisplayScale().toLowerCase();
+
     $('save').onclick = () => {
       localStorage.setItem('sortSlotStartIndex', $('start').value);
       localStorage.setItem('sortSlotCount', $('count').value);
@@ -48,15 +63,26 @@
       });
     }
 
+    function renderCardBase(card, dest) {
+      card.style.setProperty('--sort-pick-color', getSortColor(dest.displayOrder));
+      card.innerHTML = `
+        <div class="sort-slot-no">仕分け先 No.${String(dest.displayOrder).padStart(3, '0')}</div>
+        <div class="sort-slot-destination">${escapeHtml(dest.destinationName)}</div>
+      `;
+    }
+
     function render() {
       const b = snapshot?.batch;
       const activeItemKey = snapshot?.sortState?.activeItemKey;
       const item = activeItemKey && b?.items?.[activeItemKey] ? b.items[activeItemKey] : null;
-      $('sku').textContent = item ? `${item.productLabel || '商品表示名未設定'}\nJAN:${item.jan}` : 'スキャン待機中';
+      $('sku').textContent = item ? `${item.productLabel || '商品表示名未設定'} / JAN:${item.jan}` : 'スキャン待機中';
 
       const cards = $('cards');
       cards.innerHTML = '';
-      if (!b?.destinations) { cards.textContent = 'バッチ未作成'; return; }
+      if (!b?.destinations) {
+        cards.innerHTML = '<div class="sort-slot-empty">バッチ未作成</div>';
+        return;
+      }
 
       const start = Number(localStorage.getItem('sortSlotStartIndex') || 1);
       const count = Number(localStorage.getItem('sortSlotCount') || 4);
@@ -65,29 +91,36 @@
       selected.forEach((dest) => {
         const itemKey = item?.itemKey;
         const alloc = item?.allocations?.[dest.sortSlotId];
+        const isDone = alloc?.status === 'done';
         const card = document.createElement('div');
-        if (!itemKey && alloc) return;
-        card.className = `slot-card ${!alloc ? 'none' : ''} ${alloc?.status === 'done' ? 'done' : ''}`;
-        card.innerHTML = `<div>仕分け先 No.${String(dest.displayOrder).padStart(3, '0')}</div><strong>${escapeHtml(dest.destinationName)}</strong>`;
+        card.className = `sort-slot-card ${!alloc ? 'is-none' : isDone ? 'is-done' : 'is-required'}`;
+        renderCardBase(card, dest);
 
         if (!alloc) {
-          card.innerHTML += '<div>今回投入なし</div>';
-        } else if (alloc.status === 'done') {
-          card.innerHTML += '<div>完了<br>長押しで取消</div><div class="long"><span></span></div>';
+          card.innerHTML += '<div class="sort-slot-none-label">今回投入なし</div>';
+        } else if (isDone) {
+          card.innerHTML += '<div class="sort-slot-done-label">完了</div><div class="sort-slot-hint">長押しで取消</div><div class="sort-long-progress"><span></span></div>';
         } else {
-          card.innerHTML += `<div>${escapeHtml(item.productLabel || '商品表示名未設定')}</div><div>JAN:${escapeHtml(item.jan)}</div><div class='qty'>${alloc.requiredQty}</div>`;
+          card.innerHTML += `
+            <div class="sort-slot-product">${escapeHtml(item.productLabel || '商品表示名未設定')}</div>
+            <div class="sort-slot-jan">JAN: ${escapeHtml(item.jan)}</div>
+            <div class="sort-slot-qty">${escapeHtml(alloc.requiredQty)}</div>
+          `;
         }
 
         if (alloc?.status === 'required') {
           card.onclick = async () => {
-            try { await updateAllocationTransactional(b.id, itemKey, dest.sortSlotId, true); } catch (e) { $('err').textContent = e.message; }
+            try {
+              await updateAllocationTransactional(b.id, itemKey, dest.sortSlotId, true);
+              $('err').textContent = '';
+            } catch (e) { $('err').textContent = e.message; }
           };
         }
 
-        if (alloc?.status === 'done') {
+        if (isDone) {
           let t = null;
           let raf = null;
-          const bar = card.querySelector('.long > span');
+          const bar = card.querySelector('.sort-long-progress > span');
           const clear = () => { clearTimeout(t); if (raf) cancelAnimationFrame(raf); if (bar) bar.style.width = '0%'; };
           card.onpointerdown = () => {
             const startedAt = performance.now();
@@ -98,7 +131,10 @@
             };
             raf = requestAnimationFrame(tick);
             t = setTimeout(async () => {
-              try { await updateAllocationTransactional(b.id, itemKey, dest.sortSlotId, false); } catch (e) { $('err').textContent = e.message; }
+              try {
+                await updateAllocationTransactional(b.id, itemKey, dest.sortSlotId, false);
+                $('err').textContent = '';
+              } catch (e) { $('err').textContent = e.message; }
               clear();
             }, 900);
           };
