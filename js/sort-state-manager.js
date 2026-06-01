@@ -29,13 +29,16 @@
       this.db = firebase.firestore();
       this.auth = firebase.auth();
       this.user = null;
-      this.unsub = null;
+      this.sortUnsub = null;
+      this.batchUnsub = null;
+      this.currentSortState = null;
+      this.currentBatch = null;
+      this.currentBatchId = null;
 
       this.auth.onAuthStateChanged((u) => {
         this.user = u;
         this.onAuth && this.onAuth(u);
-        if (this.unsub) this.unsub();
-        this.unsub = null;
+        this.unsubscribeAll();
         if (!u) {
           this.onState && this.onState(null);
           return;
@@ -49,11 +52,51 @@
     sortBatches() { return this.db.collection('users').doc(this.user.uid).collection('sortBatches'); }
     batchDoc(batchId) { return this.sortBatches().doc(batchId); }
 
+    unsubscribeAll() {
+      if (this.sortUnsub) this.sortUnsub();
+      if (this.batchUnsub) this.batchUnsub();
+      this.sortUnsub = null;
+      this.batchUnsub = null;
+      this.currentSortState = null;
+      this.currentBatch = null;
+      this.currentBatchId = null;
+    }
+
+    emitState() {
+      this.onState && this.onState({
+        sortState: this.currentSortState || {},
+        batch: this.currentBatch
+      });
+    }
+
+    subscribeActiveBatch(batchId) {
+      if (this.currentBatchId === batchId) return;
+      if (this.batchUnsub) this.batchUnsub();
+      this.batchUnsub = null;
+      this.currentBatchId = batchId || null;
+      this.currentBatch = null;
+
+      if (!batchId) {
+        this.emitState();
+        return;
+      }
+
+      this.batchUnsub = this.batchDoc(batchId).onSnapshot((batchSnap) => {
+        this.currentBatch = batchSnap.exists ? { id: batchSnap.id, ...batchSnap.data() } : null;
+        this.emitState();
+      }, (err) => {
+        console.error('activeBatch onSnapshot failed', err);
+        this.currentBatch = null;
+        this.emitState();
+      });
+    }
+
     subscribe() {
-      this.unsub = this.sortDoc().onSnapshot(async (s) => {
+      this.sortUnsub = this.sortDoc().onSnapshot((s) => {
         const state = s.exists ? s.data() : {};
-        const batch = state?.activeBatchId ? await this.getBatch(state.activeBatchId) : null;
-        this.onState && this.onState({ sortState: state, batch });
+        this.currentSortState = state;
+        this.subscribeActiveBatch(state?.activeBatchId || null);
+        this.emitState();
       });
     }
 
