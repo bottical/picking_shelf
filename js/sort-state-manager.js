@@ -1,6 +1,29 @@
 (function () {
+  function ensureFirebaseApp() {
+    if (!window.firebase) {
+      throw new Error('Firebase SDK が読み込まれていません。');
+    }
+
+    if (firebase.apps && firebase.apps.length > 0) {
+      return;
+    }
+
+    const config =
+      (typeof firebaseConfig !== 'undefined' && firebaseConfig)
+        ? firebaseConfig
+        : window.firebaseConfig;
+
+    if (!config) {
+      throw new Error('firebaseConfig が見つかりません。js/firebase-config.js の読み込み順または定義を確認してください。');
+    }
+
+    firebase.initializeApp(config);
+  }
+
   class SortStateManager {
     constructor(onState, onAuth) {
+      ensureFirebaseApp();
+
       this.onState = onState;
       this.onAuth = onAuth;
       this.db = firebase.firestore();
