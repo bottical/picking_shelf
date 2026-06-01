@@ -17,6 +17,38 @@
     let snapshot = null;
     const mgr = new SortStateManager((s) => { snapshot = s; render(); }, (u) => { if (!u) location.href = 'index.html'; });
 
+    const cloneSnapshot = (value) => {
+      if (!value) return value;
+      if (typeof structuredClone === 'function') {
+        try {
+          return structuredClone(value);
+        } catch (_) {
+          // Firestore Timestamp 等が clone できない環境では JSON で十分な表示用スナップショットへ退避する。
+        }
+      }
+      return JSON.parse(JSON.stringify(value));
+    };
+
+    const updateLocalAllocation = (itemKey, sortSlotId, toDone) => {
+      if (!snapshot?.batch?.items?.[itemKey]?.allocations?.[sortSlotId]) return;
+
+      snapshot = cloneSnapshot(snapshot);
+      const item = snapshot.batch.items[itemKey];
+      const allocation = item.allocations[sortSlotId];
+      const wasDone = allocation.status === 'done';
+      allocation.status = toDone ? 'done' : 'required';
+      allocation.doneByDeviceId = toDone ? deviceId : null;
+      allocation.doneAt = toDone ? new Date() : null;
+      allocation.lastUpdatedAt = new Date();
+      allocation.cancelCount = toDone ? (allocation.cancelCount || 0) : ((allocation.cancelCount || 0) + (wasDone ? 1 : 0));
+
+      const requiredAllocations = Object.values(item.allocations || {}).filter((v) => (v.requiredQty || 0) > 0);
+      const doneCount = requiredAllocations.filter((v) => v.status === 'done').length;
+      item.status = doneCount === 0 ? 'active' : doneCount === requiredAllocations.length ? 'completed' : 'partial';
+      snapshot.batch.updatedAt = new Date();
+      render();
+    };
+
     const escapeHtml = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     const getSortColor = (displayOrder) => SORT_COLORS[(Math.max(1, Number(displayOrder || 1)) - 1) % SORT_COLORS.length];
     const getDisplayScale = () => localStorage.getItem('sortDisplayScale') || 'M';
@@ -34,33 +66,34 @@
       location.reload();
     };
 
-    async function updateAllocationTransactional(batchId, itemKey, sortSlotId, toDone) {
-      const ref = mgr.batchDoc(batchId);
-      await mgr.db.runTransaction(async (tx) => {
-        const snap = await tx.get(ref);
-        if (!snap.exists) throw new Error('バッチが見つかりません');
-        const batch = snap.data();
-        const item = batch.items?.[itemKey];
-        if (!item) throw new Error('SKUが見つかりません');
-        const allocation = item.allocations?.[sortSlotId];
-        if (!allocation) throw new Error('仕分け先が見つかりません');
+    async function updateAllocation(batchId, itemKey, sortSlotId, toDone) {
+      const item = snapshot?.batch?.items?.[itemKey];
+      if (!item) throw new Error('SKUが見つかりません');
+      const allocation = item.allocations?.[sortSlotId];
+      if (!allocation) throw new Error('仕分け先が見つかりません');
 
-        const values = Object.values(item.allocations || {}).filter((v) => (v.requiredQty || 0) > 0);
-        const simulated = values.map((v) => (v.sortSlotId === sortSlotId ? { ...v, status: toDone ? 'done' : 'required' } : v));
-        const doneCount = simulated.filter((v) => v.status === 'done').length;
-        const nextItemStatus = doneCount === 0 ? 'active' : doneCount === simulated.length ? 'completed' : 'partial';
+      const values = Object.values(item.allocations || {}).filter((v) => (v.requiredQty || 0) > 0);
+      const simulated = values.map((v) => (
+        v.sortSlotId === sortSlotId ? { ...v, status: toDone ? 'done' : 'required' } : v
+      ));
+      const doneCount = simulated.filter((v) => v.status === 'done').length;
+      const nextItemStatus = doneCount === 0 ? 'active' : doneCount === simulated.length ? 'completed' : 'partial';
+      const serverTimestamp = firebase.firestore.FieldValue.serverTimestamp();
+      const base = `items.${itemKey}.allocations.${sortSlotId}`;
+      const updatePayload = {
+        [`${base}.status`]: toDone ? 'done' : 'required',
+        [`${base}.doneByDeviceId`]: toDone ? deviceId : null,
+        [`${base}.doneAt`]: toDone ? serverTimestamp : null,
+        [`${base}.lastUpdatedAt`]: serverTimestamp,
+        [`items.${itemKey}.status`]: nextItemStatus,
+        updatedAt: serverTimestamp
+      };
 
-        const base = `items.${itemKey}.allocations.${sortSlotId}`;
-        tx.update(ref, {
-          [`${base}.status`]: toDone ? 'done' : 'required',
-          [`${base}.doneByDeviceId`]: toDone ? deviceId : null,
-          [`${base}.doneAt`]: toDone ? firebase.firestore.FieldValue.serverTimestamp() : null,
-          [`${base}.lastUpdatedAt`]: firebase.firestore.FieldValue.serverTimestamp(),
-          [`${base}.cancelCount`]: toDone ? (allocation.cancelCount || 0) : ((allocation.cancelCount || 0) + 1),
-          [`items.${itemKey}.status`]: nextItemStatus,
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-      });
+      if (!toDone) {
+        updatePayload[`${base}.cancelCount`] = firebase.firestore.FieldValue.increment(1);
+      }
+
+      await mgr.batchDoc(batchId).update(updatePayload);
     }
 
     function renderCardBase(card, dest) {
@@ -110,10 +143,17 @@
 
         if (alloc?.status === 'required') {
           card.onclick = async () => {
+            const previousSnapshot = cloneSnapshot(snapshot);
             try {
-              await updateAllocationTransactional(b.id, itemKey, dest.sortSlotId, true);
+              updateLocalAllocation(itemKey, dest.sortSlotId, true);
+              await updateAllocation(b.id, itemKey, dest.sortSlotId, true);
+              updateLocalAllocation(itemKey, dest.sortSlotId, true);
               $('err').textContent = '';
-            } catch (e) { $('err').textContent = e.message; }
+            } catch (e) {
+              snapshot = previousSnapshot;
+              render();
+              $('err').textContent = e.message;
+            }
           };
         }
 
@@ -131,10 +171,17 @@
             };
             raf = requestAnimationFrame(tick);
             t = setTimeout(async () => {
+              const previousSnapshot = cloneSnapshot(snapshot);
               try {
-                await updateAllocationTransactional(b.id, itemKey, dest.sortSlotId, false);
+                updateLocalAllocation(itemKey, dest.sortSlotId, false);
+                await updateAllocation(b.id, itemKey, dest.sortSlotId, false);
+                updateLocalAllocation(itemKey, dest.sortSlotId, false);
                 $('err').textContent = '';
-              } catch (e) { $('err').textContent = e.message; }
+              } catch (e) {
+                snapshot = previousSnapshot;
+                render();
+                $('err').textContent = e.message;
+              }
               clear();
             }, 900);
           };
