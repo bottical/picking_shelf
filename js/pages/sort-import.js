@@ -2,9 +2,58 @@
   document.addEventListener('DOMContentLoaded', () => {
     const $ = (id) => document.getElementById(id);
     const mgr = new SortStateManager(() => { }, (u) => { if (!u) location.href = 'index.html'; });
+    const SORT_IMPORT_COLUMNS_KEY = 'shelflow.sortImport.columns.v1';
+    const COLUMN_INPUT_IDS = ['colJan', 'colDest', 'colQty', 'colLabel', 'colDestCode'];
     const msg = $('msg');
     const preview = $('preview');
     const warningsPreview = $('warningsPreview');
+
+    const setMessage = (text, color = 'var(--success)') => {
+      msg.style.color = color;
+      msg.textContent = text;
+    };
+
+    const saveColumns = () => {
+      const payload = {};
+      COLUMN_INPUT_IDS.forEach((id) => {
+        payload[id] = String($(id)?.value || '').trim();
+      });
+      localStorage.setItem(SORT_IMPORT_COLUMNS_KEY, JSON.stringify(payload));
+    };
+
+    const loadSavedColumns = () => {
+      try {
+        const raw = localStorage.getItem(SORT_IMPORT_COLUMNS_KEY);
+        if (!raw) return;
+        const saved = JSON.parse(raw);
+        COLUMN_INPUT_IDS.forEach((id) => {
+          if (saved[id] !== undefined && $(id)) $(id).value = saved[id];
+        });
+      } catch (e) {
+        console.warn('[sort-import] failed to load saved columns', e);
+      }
+    };
+
+    loadSavedColumns();
+
+    $('saveColumnSettingsBtn')?.addEventListener('click', () => {
+      try {
+        saveColumns();
+        setMessage('列設定を保存しました');
+      } catch (e) {
+        setMessage(`列設定の保存に失敗しました: ${e.message}`, 'var(--danger)');
+      }
+    });
+
+    $('clearColumnSettingsBtn')?.addEventListener('click', () => {
+      try {
+        localStorage.removeItem(SORT_IMPORT_COLUMNS_KEY);
+        COLUMN_INPUT_IDS.forEach((id) => { if ($(id)) $(id).value = ''; });
+        setMessage('列設定をクリアしました');
+      } catch (e) {
+        setMessage(`列設定のクリアに失敗しました: ${e.message}`, 'var(--danger)');
+      }
+    });
 
     const readRequiredColumn = (id, label) => {
       const raw = String($(id).value || '').trim();
@@ -157,6 +206,7 @@
           destinations: destinationMap,
           items
         });
+        saveColumns();
 
         const visibleWarnings = warnings.slice(0, 20);
         const hiddenWarningCount = warnings.length - visibleWarnings.length;
@@ -164,11 +214,9 @@
           ? `${visibleWarnings.join('\n')}${hiddenWarningCount > 0 ? `\nほか${hiddenWarningCount}件` : ''}`
           : '警告はありません';
         preview.textContent = `バッチ名: ${batchName}\nSKU数: ${Object.keys(items).length}\n仕分け先数: ${Object.keys(destinationMap).length}\n総数量: ${totalQty}\n警告件数: ${warnings.length}\n${Object.values(destinationMap).map((d) => `No.${String(d.displayOrder).padStart(3, '0')} ${d.destinationName}`).join('\n')}`;
-        msg.style.color = 'var(--success)';
-        msg.textContent = '取込完了';
+        setMessage('取込完了（列設定を保存しました）');
       } catch (e) {
-        msg.style.color = 'var(--danger)';
-        msg.textContent = e.message;
+        setMessage(e.message, 'var(--danger)');
       }
     };
 

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>卸仕分け 取込</title>
-  <link rel="stylesheet" href="css/style.css?v=sort-20260601a">
+  <link rel="stylesheet" href="css/style.css?v=sort-20260601b">
 </head>
 <body class="sort-import-body">
   <div class="sort-page">
@@ -60,6 +60,11 @@
         </section>
 
         <div class="sort-actions">
+          <button id="saveColumnSettingsBtn" class="btn btn-outline" type="button">列設定を保存</button>
+          <button id="clearColumnSettingsBtn" class="btn btn-outline" type="button">列設定をクリア</button>
+        </div>
+
+        <div class="sort-actions">
           <button id="importBtn" class="btn btn-primary">取込・バッチ開始</button>
           <button id="resetBtn" class="btn btn-danger">卸仕分けデータリセット</button>
         </div>
@@ -85,6 +90,6 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
   <script src="js/firebase-config.js"></script>
   <script src="js/sort-state-manager.js?v=sort-20260527c"></script>
-  <script src="js/pages/sort-import.js?v=sort-20260601a"></script>
+  <script src="js/pages/sort-import.js?v=sort-20260601b"></script>
 </body>
 </html>

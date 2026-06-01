@@ -771,3 +771,314 @@ body.wall-mode #instructionBanner.hidden {
         grid-template-columns: 1fr;
     }
 }
+
+/* SORT scan page */
+.sort-scan-input {
+    font-size: 2rem;
+    font-weight: 900;
+    text-align: center;
+    padding: 1rem;
+    letter-spacing: 0.04em;
+}
+
+.sort-scan-note {
+    margin-top: 0.4rem;
+}
+
+/* SORT wall page */
+body.sort-wall-mode {
+    margin: 0;
+    min-height: 100dvh;
+    background: #0b0f19;
+    color: #fff;
+    overflow: auto;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+body.sort-wall-mode input,
+body.sort-wall-mode select,
+body.sort-wall-mode button {
+    -webkit-user-select: auto;
+    user-select: auto;
+    -webkit-touch-callout: default;
+}
+
+body.sort-wall-mode .btn-outline {
+    border-color: rgba(226, 232, 240, 0.72);
+    color: #e5e7eb;
+}
+
+body.sort-wall-mode .btn-outline:hover {
+    background: rgba(148, 163, 184, 0.16);
+}
+
+body.sort-wall-mode input,
+body.sort-wall-mode select {
+    background: #020617;
+    border-color: #475569;
+    color: #fff;
+}
+
+.sort-wall-root {
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    background: #0b0f19;
+}
+
+.sort-wall-header {
+    background: #1e293b;
+    color: #fff;
+    border-bottom: 2px solid rgba(148, 163, 184, 0.45);
+    padding: 0.75rem 1rem;
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.sort-wall-title {
+    font-weight: 900;
+    font-size: 1.1rem;
+}
+
+.sort-wall-subtitle {
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+
+.sort-wall-nav {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.sort-wall-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    min-height: 0;
+}
+
+.sort-current-sku {
+    background: #111827;
+    border: 1px solid #334155;
+    border-radius: 0.75rem;
+    padding: 0.75rem 1rem;
+    color: #e5e7eb;
+}
+
+.sort-current-sku-title {
+    color: #94a3b8;
+    font-size: 0.75rem;
+    font-weight: 900;
+    margin-bottom: 0.25rem;
+}
+
+.sort-current-sku-main {
+    font-size: 1.1rem;
+    font-weight: 900;
+    word-break: break-all;
+}
+
+.sort-slot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 0.65rem;
+    flex: 1;
+    min-height: 0;
+}
+
+.sort-slot-card {
+    position: relative;
+    min-height: 180px;
+    background: #111;
+    color: #475569;
+    border: 2px solid rgba(255, 255, 255, 0.72);
+    border-radius: 0.6rem;
+    padding: 0.75rem;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    text-align: center;
+    touch-action: manipulation;
+}
+
+.sort-slot-card.is-required {
+    background: var(--sort-pick-color, #2563eb);
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.95);
+    box-shadow:
+        0 0 20px var(--sort-pick-color, #2563eb),
+        inset 0 0 15px rgba(0, 0, 0, 0.18);
+    cursor: pointer;
+}
+
+.sort-slot-card.is-none {
+    background: #050505;
+    color: #555;
+    opacity: 0.45;
+    filter: grayscale(1);
+}
+
+.sort-slot-card.is-done {
+    background: #020617;
+    color: #22c55e;
+    border: 4px solid #22c55e;
+    box-shadow: 0 0 18px rgba(34, 197, 94, 0.45);
+}
+
+.sort-slot-destination {
+    font-size: 0.9rem;
+    font-weight: 900;
+    line-height: 1.15;
+    margin-bottom: 0.35rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sort-slot-no {
+    font-size: 0.72rem;
+    color: inherit;
+    opacity: 0.8;
+    font-weight: 800;
+    margin-bottom: 0.25rem;
+}
+
+.sort-slot-product {
+    font-size: 0.8rem;
+    opacity: 0.95;
+    font-weight: 800;
+    margin-bottom: 0.25rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sort-slot-jan {
+    font-size: 0.7rem;
+    opacity: 0.78;
+    font-family: monospace;
+    margin-bottom: 0.4rem;
+    word-break: break-all;
+}
+
+.sort-slot-qty {
+    font-size: clamp(3rem, 12vw, 6rem);
+    line-height: 1;
+    font-weight: 1000;
+    letter-spacing: -0.06em;
+}
+
+.sort-slot-none-label,
+.sort-slot-done-label {
+    font-size: 1.4rem;
+    font-weight: 900;
+}
+
+.sort-slot-hint {
+    font-size: 0.8rem;
+    opacity: 0.85;
+}
+
+.sort-slot-empty {
+    background: #111827;
+    border: 1px solid #334155;
+    border-radius: 0.75rem;
+    color: #cbd5e1;
+    font-weight: 900;
+    padding: 1rem;
+}
+
+.sort-long-progress {
+    height: 6px;
+    background: rgba(148, 163, 184, 0.3);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-top: 0.75rem;
+}
+
+.sort-long-progress > span {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: #f59e0b;
+}
+
+.sort-wall-settings {
+    background: #111827;
+    border: 1px solid #334155;
+    border-radius: 0.75rem;
+    padding: 0.75rem;
+}
+
+.sort-wall-settings-panel {
+    display: none;
+    margin-top: 0.75rem;
+}
+
+.sort-wall-settings-panel.open {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.75rem;
+    align-items: end;
+}
+
+.sort-wall-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    color: #cbd5e1;
+    font-size: 0.85rem;
+    font-weight: 800;
+}
+
+.sort-wall-setting-actions {
+    display: flex;
+    align-items: end;
+}
+
+.sort-wall-error {
+    color: #fecaca;
+    font-weight: 900;
+    min-height: 1.2rem;
+}
+
+body.sort-wall-mode[data-sort-scale="s"] .sort-slot-card {
+    min-height: 150px;
+}
+
+body.sort-wall-mode[data-sort-scale="l"] .sort-slot-card {
+    min-height: 220px;
+}
+
+body.sort-wall-mode[data-sort-scale="l"] .sort-slot-qty {
+    font-size: clamp(4rem, 14vw, 7rem);
+}
+
+@media (max-width: 640px) {
+    .sort-scan-input {
+        font-size: 1.4rem;
+    }
+
+    .sort-slot-grid {
+        grid-template-columns: repeat(auto-fill, minmax(145px, 1fr));
+    }
+
+    .sort-slot-card {
+        min-height: 160px;
+        padding: 0.6rem;
+    }
+
+    .sort-slot-qty {
+        font-size: clamp(3rem, 22vw, 5.5rem);
+    }
+}
