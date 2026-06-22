@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ヘルプ・操作マニュアル - シェルフロー</title>
+    <link rel="stylesheet" href="css/style.css?v=help-20260622a">
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="theme-color" content="#0f172a">
+</head>
+
+<body class="help-body">
+    <main class="help-page">
+        <header class="help-header">
+            <div>
+                <p class="help-eyebrow">SHELFLOW USER GUIDE</p>
+                <h1>ヘルプ・操作マニュアル</h1>
+                <p>基本操作、CSV取込、検品・仕分け作業、よくある質問を確認できます。</p>
+            </div>
+            <a class="btn btn-outline" href="./index.html">ホームへ戻る</a>
+        </header>
+
+        <nav class="help-toc" aria-labelledby="help-toc-title">
+            <h2 id="help-toc-title">目次</h2>
+            <ol>
+                <li><a href="#overview">はじめに</a></li>
+                <li><a href="#login">ログイン方法</a></li>
+                <li><a href="#csv">CSV取込</a></li>
+                <li><a href="#inspection">検品作業</a></li>
+                <li><a href="#sorting">仕分け作業</a></li>
+                <li><a href="#progress">進捗確認</a></li>
+                <li><a href="#faq">よくある質問</a></li>
+                <li><a href="#support">トラブル時の連絡事項</a></li>
+            </ol>
+        </nav>
+
+        <section id="overview" class="help-section">
+            <h2>1. はじめに</h2>
+            <p>本ページでは、シェルフローの基本操作と、作業中によく発生する確認事項を説明します。</p>
+            <h3>基本的な流れ</h3>
+            <ol>
+                <li>ログインします。</li>
+                <li>CSVデータを取り込みます。</li>
+                <li>作業画面でバーコードを読み取ります。</li>
+                <li>数量や完了状態を確認します。</li>
+                <li>必要に応じて進捗や完了データを確認します。</li>
+            </ol>
+            <h3>推奨環境</h3>
+            <ul>
+                <li>最新版のGoogle ChromeまたはMicrosoft Edgeを推奨します。</li>
+                <li>バーコードリーダーを使用する場合は、読み取り先の入力欄にカーソルがあることを確認してください。</li>
+                <li>通信が不安定な場合、CSV/Excel取込や完了状態の反映に時間がかかることがあります。</li>
+            </ul>
+        </section>
+
+        <section id="login" class="help-section">
+            <h2>2. ログイン方法</h2>
+            <ol>
+                <li>ログイン画面を開きます。</li>
+                <li>メールアドレスとパスワードを入力します。</li>
+                <li>ログインボタンを押します。</li>
+            </ol>
+            <h3>ログインできない場合</h3>
+            <ul>
+                <li>メールアドレス・パスワードに誤りがないか確認してください。</li>
+                <li>ブラウザを再読み込みしてください。</li>
+                <li>解決しない場合は管理者へ連絡してください。</li>
+            </ul>
+        </section>
+
+        <section id="csv" class="help-section">
+            <h2>3. CSV取込</h2>
+            <ol>
+                <li>CSV取込画面を開きます。</li>
+                <li>対象のCSVファイルを選択します。</li>
+                <li>マッピング設定や表示内容を確認します。</li>
+                <li>取込を実行します。</li>
+            </ol>
+            <h3>CSVが読み込めない場合</h3>
+            <ul>
+                <li>ファイル形式がCSVまたは指定形式になっているか確認してください。</li>
+                <li>必要な列が不足していないか確認してください。</li>
+                <li>Excelで保存したファイルの場合、文字コードや改行形式の影響で読み込めない場合があります。</li>
+            </ul>
+        </section>
+
+        <section id="inspection" class="help-section">
+            <h2>4. 検品作業</h2>
+            <ol>
+                <li>検品・投入画面を開きます。</li>
+                <li>ピッキングIDを入力または読み取ります。</li>
+                <li>対象商品が表示されたことを確認します。</li>
+                <li>商品バーコードを読み取ります。</li>
+                <li>必要数量に達すると、その商品が完了状態になります。</li>
+            </ol>
+        </section>
+
+        <section id="sorting" class="help-section">
+            <h2>5. 仕分け作業</h2>
+            <ol>
+                <li>卸仕分けモードを開きます。</li>
+                <li>必要に応じて作業者や対象データを選択します。</li>
+                <li>対象SKUのバーコードを読み取ります。</li>
+                <li>表示された卸先ごとの数量を確認します。</li>
+                <li>投入が完了した卸先の完了ボタンを押します。</li>
+                <li>誤って完了した場合は、完了表示の長押しで取消を行います。</li>
+            </ol>
+            <h3>表示数量の見方</h3>
+            <ul>
+                <li>卸先ごとの数量を確認し、表示された数量分を投入してください。</li>
+                <li>「今回投入なし」と表示されている卸先は、対象SKUを投入する必要がありません。</li>
+                <li>完了後に誤りに気付いた場合は、対象カードの「長押しで取消」表示に従って完了を取り消してください。</li>
+            </ul>
+        </section>
+
+        <section id="progress" class="help-section">
+            <h2>6. 進捗確認</h2>
+            <p>進捗画面では、作業の完了状況や未完了状況を確認できます。</p>
+            <ul>
+                <li>完了済みの作業</li>
+                <li>未完了の作業</li>
+                <li>作業者別の状況</li>
+                <li>必要に応じたCSV出力</li>
+            </ul>
+        </section>
+
+        <section id="faq" class="help-section">
+            <h2>7. よくある質問</h2>
+
+            <h3>バーコードを読み取っても反応しません</h3>
+            <ul>
+                <li>入力欄にカーソルが入っているか確認してください。</li>
+                <li>バーコードリーダーが接続されているか確認してください。</li>
+                <li>別のバーコードで反応するか確認してください。</li>
+            </ul>
+
+            <h3>「EXCEL読込みライブラリの読込に失敗しました」など、Excel読込エラーが表示されます</h3>
+            <ul>
+                <li>「Excel取込ライブラリを読み込めませんでした」や「Excel読込ライブラリの読み込みに失敗しました」と表示される場合も、まず画面を再読み込みしてから再度取り込んでください。</li>
+                <li>急ぎの場合は、ExcelファイルをCSV形式で保存し直して取り込んでください。</li>
+                <li>時間をおいても解消しない場合は、ブラウザのキャッシュ削除または別端末で確認してください。</li>
+                <li>同じ現象が続く場合は、発生日時・使用端末・画面キャプチャを管理者へ連絡してください。</li>
+            </ul>
+
+            <h3>画面が更新されません</h3>
+            <ul>
+                <li>ブラウザを再読み込みしてください。</li>
+                <li>通信環境を確認してください。</li>
+                <li>同じ現象が続く場合は管理者へ連絡してください。</li>
+            </ul>
+
+            <h3>完了一覧に表示されません</h3>
+            <ul>
+                <li>作業が完了状態になっているか確認してください。</li>
+                <li>検索条件や日付条件を確認してください。</li>
+                <li>画面を再読み込みしてください。</li>
+            </ul>
+        </section>
+
+        <section id="support" class="help-section">
+            <h2>8. トラブル時の連絡事項</h2>
+            <p>問い合わせ時は、以下の情報を伝えてください。</p>
+            <p>不明点がある場合は、社内管理者または導入時に案内されたサポート窓口へ連絡してください。</p>
+            <ul>
+                <li>発生日時</li>
+                <li>使用していた画面</li>
+                <li>作業者名</li>
+                <li>ピッキングIDまたはSKU</li>
+                <li>エラーメッセージ</li>
+                <li>画面キャプチャ</li>
+            </ul>
+            <h3>問い合わせテンプレート</h3>
+            <pre class="help-template">発生日時：
+画面名：
+作業者名：
+ピッキングID / SKU：
+エラーメッセージ：
+実施した操作：</pre>
+        </section>
+    </main>
+</body>
+
+</html>
