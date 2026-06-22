@@ -1257,3 +1257,12 @@ body.help-body {
         padding: 1rem;
     }
 }
+
+.help-template {
+    white-space: pre-wrap;
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: 0.75rem;
+    padding: 1rem;
+    overflow-x: auto;
+}
