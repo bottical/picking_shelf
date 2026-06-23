@@ -103,6 +103,11 @@
             <h2>3. HOME画面</h2>
             <p>HOME画面は、ログイン後に最初に表示される画面です。各モードへの移動、ログアウト、データリセットを行います。</p>
 
+            <figure class="help-image">
+                <img src="img/help/home.png" alt="HOME画面のメニュー表示" loading="lazy">
+                <figcaption>HOME画面：投入モード、モバイルウォール、ピッキング、卸仕分けモード、ヘルプへ移動できます。</figcaption>
+            </figure>
+
             <h3>主なメニュー</h3>
             <ul>
                 <li><strong>投入モード：</strong>CSV / Excelを読み込み、JANスキャンで商品を間口へ割り当てます。</li>
@@ -162,6 +167,11 @@
             <h3>投入モードの役割</h3>
             <p>投入モードでは、商品JANを読み取り、対象商品をどの間口へ入れるかを登録します。PC側では全体レイアウトを確認しながら操作します。</p>
 
+            <figure class="help-image">
+                <img src="img/help/inject.png" alt="投入モード画面" loading="lazy">
+                <figcaption>投入モード：CSV / Excelファイルを読み込み、JANスキャンで投入先を割り当てます。</figcaption>
+            </figure>
+
             <h3>ファイル読込手順</h3>
             <ol>
                 <li>投入モードを開きます。</li>
@@ -170,6 +180,11 @@
                 <li>「インポート実行」を押します。</li>
                 <li>読み込み完了後、投入対象SKUとピッキングリストが作成されます。</li>
             </ol>
+
+            <figure class="help-image help-image-narrow">
+                <img src="img/help/inject-column-setting.png" alt="投入モードの列設定画面" loading="lazy">
+                <figcaption>列設定：ピッキングNo.、JANコード、数量の列番号を指定します。</figcaption>
+            </figure>
 
             <h3>商品投入の流れ</h3>
             <ol>
@@ -201,6 +216,11 @@
             <h3>Wall画面の役割</h3>
             <p>Wall画面は、間口ごとの状態表示と操作を行う画面です。投入作業時とピッキング作業時の両方で使用します。</p>
 
+            <figure class="help-image">
+                <img src="img/help/wall-list.png" alt="Wall画面の一覧表示" loading="lazy">
+                <figcaption>Wall画面 一覧表示：複数間口の状態をまとめて確認できます。</figcaption>
+            </figure>
+
             <h3>初期設定</h3>
             <p>初回利用時は、必要に応じて以下を設定します。</p>
             <ul>
@@ -218,6 +238,11 @@
                 <li><strong>一覧表示：</strong>複数間口を同時に表示するモードです。主にPCやタブレット向けです。</li>
                 <li><strong>個別表示：</strong>1間口ずつ詳細表示するモードです。スマホ向けの利用を想定しています。</li>
             </ul>
+
+            <figure class="help-image help-image-narrow">
+                <img src="img/help/wall-single.png" alt="Wall画面の個別表示" loading="lazy">
+                <figcaption>Wall画面 個別表示：スマホで1間口ずつ確認・操作する場合に使用します。</figcaption>
+            </figure>
 
             <h3>投入時の見方</h3>
             <ul>
@@ -248,6 +273,11 @@
 
             <h3>ピッキングモードの役割</h3>
             <p>ピッキングモードでは、ピッキングNo.ごとに対象商品を表示し、取り出し作業を完了管理します。</p>
+
+            <figure class="help-image">
+                <img src="img/help/pick.png" alt="ピッキングモード画面" loading="lazy">
+                <figcaption>ピッキングモード：ピッキングNo.を入力し、対象商品の数量・ロケーション・状態を確認します。</figcaption>
+            </figure>
 
             <h3>作業開始手順</h3>
             <ol>
@@ -296,6 +326,11 @@
                 <li><strong>仕分け先表示：</strong>スマホやタブレットで、仕分け先ごとの数量を表示します。</li>
             </ul>
 
+            <figure class="help-image">
+                <img src="img/help/sort-import.png" alt="卸仕分け取込画面" loading="lazy">
+                <figcaption>卸仕分け取込：CSV / Excelファイルを読み込み、バーコード列・仕分け先名列・数量列を指定します。</figcaption>
+            </figure>
+
             <h3>取込手順</h3>
             <ol>
                 <li>HOME画面から「卸仕分けモード」を開きます。</li>
@@ -307,6 +342,11 @@
                 <li>警告がある場合は、内容を確認して必要に応じて元ファイルまたは列設定を修正してください。</li>
             </ol>
 
+            <figure class="help-image">
+                <img src="img/help/sort-scan.png" alt="卸仕分けPCスキャン画面" loading="lazy">
+                <figcaption>PCスキャン画面：商品バーコードを読み取り、現在SKUと直前SKUステータスを確認します。</figcaption>
+            </figure>
+
             <h3>PCスキャン手順</h3>
             <ol>
                 <li>「PCスキャン画面」を開きます。</li>
@@ -315,6 +355,11 @@
                 <li>現在SKUと仕分け先別の進捗が表示されます。</li>
                 <li>次の商品をスキャンすると、表示対象SKUが切り替わります。</li>
             </ol>
+
+            <figure class="help-image help-image-narrow">
+                <img src="img/help/sort-wall.png" alt="仕分け先表示画面" loading="lazy">
+                <figcaption>仕分け先表示：卸先ごとの投入数量を確認し、完了した仕分け先をタップします。</figcaption>
+            </figure>
 
             <h3>仕分け先表示画面の使い方</h3>
             <ol>
