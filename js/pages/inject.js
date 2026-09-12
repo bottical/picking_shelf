@@ -865,9 +865,14 @@
                     showMessage(`⚠️ 同一JANに複数の商品表示名があります。CSV内容を確認してください。対象: ${labelWarnings.length} JAN`, 'error');
                 }
                 if (verification.ok) {
+                    const skuCount = Object.keys(aggregatedInject).length;
+                    const totalQty = Object.values(aggregatedInject)
+                        .reduce((sum, qty) => sum + Number(qty || 0), 0);
                     showImportIntegrityStatus(
                         '<strong>✓ インポート正常完了</strong><br><br>' +
-                        `ピッキングリスト：${verification.actual} / ${verification.expected}件<br><br>` +
+                        `SKU数：${skuCount.toLocaleString()}品目<br>` +
+                        `総数量：${totalQty.toLocaleString()}個<br>` +
+                        `ピッキングリスト：${verification.actual.toLocaleString()} / ${verification.expected.toLocaleString()}件<br><br>` +
                         'DBへの登録を確認しました。<br>作業を開始できます。' +
                         (warningText ? '<br><br>商品表示名に関する警告があります。画面の警告を確認してください。' : ''),
                         'info'
