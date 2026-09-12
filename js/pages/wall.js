@@ -1275,7 +1275,8 @@
                         block.classList.add('picking');
                         block.classList.add(`pulse-user-${stateMgr.currentUserId.slice(-1)}`);
                         if (isMultiSlotSingleTarget) {
-                            renderPickBlock(block, formatJanLast4(targetJan), `${myPickData.pendingQty}`, '他SKUあり');
+                            const targetLabel = getProductLabel(state, targetJan) || formatJanLast4(targetJan);
+                            renderPickBlock(block, targetLabel, `${myPickData.pendingQty}`, '他SKUあり');
                         } else if (isMultiTargetPick) {
                             const multiTargetLabel = denseEnabled ? `${targetSkuCount} SKU` : `対象 ${targetSkuCount} SKU`;
                             renderPickBlock(block, multiTargetLabel, `${myPickData.pendingQty}`, '複数SKU');
@@ -1317,7 +1318,8 @@
                 } else if (myPickData && myPickData.pendingQty === 0) {
                     block.classList.add('picking-done');
                     if (isMultiSlotSingleTarget) {
-                        renderPickBlock(block, formatJanLast4(targetJan), `${myPickData.totalQty}`, '他SKUあり');
+                        const targetLabel = getProductLabel(state, targetJan) || formatJanLast4(targetJan);
+                        renderPickBlock(block, targetLabel, `${myPickData.totalQty}`, '他SKUあり');
                     } else if (isMultiTargetPick) {
                         const doneLabel = denseEnabled ? `${targetSkuCount} SKU` : `完了 ${targetSkuCount} SKU`;
                         renderPickBlock(block, doneLabel, `${myPickData.totalQty}`, '複数SKU');
