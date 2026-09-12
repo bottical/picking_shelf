@@ -1468,6 +1468,19 @@ StateManager.prototype.replaceAllPickLists = async function (groupedPick) {
     });
 };
 
+StateManager.prototype.verifyPickListCount = async function (expectedCount) {
+    if (!this.user) return Promise.reject("Not authenticated");
+    const expected = Number(expectedCount);
+    if (!Number.isInteger(expected) || expected < 0) {
+        return Promise.reject(new Error('Expected pick list count must be a non-negative integer'));
+    }
+    // Explicitly bypass the local cache: import success is only shown after the
+    // server confirms how many pick-list documents actually exist.
+    const snapshot = await this._getPickListCollectionRef(this.user.uid).get({ source: 'server' });
+    const actual = snapshot.size;
+    return { expected, actual, ok: actual === expected };
+};
+
 StateManager.prototype.loadPickList = async function (listId) {
     if (!this.user || !listId) return null;
     this.currentPickListLoading = true;
