@@ -5,6 +5,7 @@
         const scanInput = document.getElementById('scanInput');
         const scanMsg = document.getElementById('scanMsg');
         const loadCsvBtn = document.getElementById('loadCsvBtn');
+        const importIntegrityStatus = document.getElementById('importIntegrityStatus');
         const slotCsvFileInput = document.getElementById('slotCsvFile');
         const importSlotLayoutBtn = document.getElementById('importSlotLayoutBtn');
         const exportSlotLayoutBtn = document.getElementById('exportSlotLayoutBtn');
@@ -23,6 +24,17 @@
         let highlightTimer = null;
         const HIGHLIGHT_MS = 3000;
         let pendingSlotImportPreview = null;
+        let isPickListImporting = false;
+
+        const showImportIntegrityStatus = (html, type) => {
+            importIntegrityStatus.className = `alert ${type}`;
+            importIntegrityStatus.innerHTML = html;
+        };
+
+        const setPickListImporting = (isImporting) => {
+            isPickListImporting = isImporting;
+            loadCsvBtn.disabled = isImporting;
+        };
 
 
         const getValidBaysOrBlock = (state, messageTarget = bayGrid) => {
@@ -38,7 +50,7 @@
                 return null;
             }
             if (scanInput) scanInput.disabled = false;
-            if (loadCsvBtn) loadCsvBtn.disabled = false;
+            if (loadCsvBtn) loadCsvBtn.disabled = isPickListImporting;
             if (importSlotLayoutBtn) importSlotLayoutBtn.disabled = false;
             return totalBays;
         };
@@ -791,6 +803,14 @@
                 groupedPick[pickNo].push({ jan, qty, checkedQty: 0, status: 'PENDING', productLabel, productCode, productName });
             });
 
+            if (Object.keys(groupedPick).length === 0) {
+                showImportIntegrityStatus(
+                    '有効なピッキングデータがありません。列設定とファイル内容を確認してください。',
+                    'error'
+                );
+                return;
+            }
+
             const updates = {
                 injectList: aggregatedInject,
                 productInfo,
@@ -815,8 +835,27 @@
             if (needInit) updates.splits = newSplits;
 
             try {
+                const expectedPickListCount = Object.keys(groupedPick).length;
+                showImportIntegrityStatus(
+                    'ピッキングデータを保存しています。<br>完了するまで画面を閉じないでください。',
+                    'info'
+                );
                 await stateMgr.replaceAllPickLists(groupedPick);
                 await stateMgr.update(updates);
+                let verification;
+                try {
+                    verification = await stateMgr.verifyPickListCount(expectedPickListCount);
+                } catch (verificationError) {
+                    console.error('ピッキングリストのサーバー確認に失敗しました:', verificationError);
+                    showImportIntegrityStatus(
+                        '<strong>⚠ インポート結果を確認できませんでした</strong><br><br>' +
+                        '通信が不安定な可能性があります。<br>' +
+                        'この状態では正常登録を確認できません。<br><br>' +
+                        '通信状態を確認してから、同じファイルを再度インポートしてください。',
+                        'error'
+                    );
+                    return;
+                }
                 const labelWarnings = Object.entries(labelVariantsByJan)
                     .filter(([, labels]) => labels.size > 1)
                     .map(([jan, labels]) => `同一JANに複数の商品表示名があります。\nJAN: ${jan}\n${Array.from(labels).map(label => `- ${label}`).join('\n')}\n\n現在仕様ではJAN単位で集約されます。CSV内容を確認してください。`);
@@ -825,10 +864,31 @@
                     console.warn('[inject] 同一JANに複数の商品表示名があります', labelWarnings);
                     showMessage(`⚠️ 同一JANに複数の商品表示名があります。CSV内容を確認してください。対象: ${labelWarnings.length} JAN`, 'error');
                 }
-                alert(`${Object.keys(aggregatedInject).length} 品目のデータを読み込みました。\nピッキングリスト: ${Object.keys(groupedPick).length} 件${warningText}`);
+                if (verification.ok) {
+                    showImportIntegrityStatus(
+                        '<strong>✓ インポート正常完了</strong><br><br>' +
+                        `ピッキングリスト：${verification.actual} / ${verification.expected}件<br><br>` +
+                        'DBへの登録を確認しました。<br>作業を開始できます。' +
+                        (warningText ? '<br><br>商品表示名に関する警告があります。画面の警告を確認してください。' : ''),
+                        'info'
+                    );
+                } else {
+                    showImportIntegrityStatus(
+                        '<strong>⚠ インポートが正常に完了していません</strong><br><br>' +
+                        `ピッキングリスト：${verification.actual} / ${verification.expected}件<br><br>` +
+                        'DBへの登録を正常に確認できませんでした。<br>' +
+                        'このまま作業せず、通信状態を確認して、同じファイルを再度インポートしてください。',
+                        'error'
+                    );
+                }
             } catch (e) {
                 console.error('インポートデータの保存に失敗しました:', e);
-                alert('インポートデータの保存に失敗しました。通信状態をご確認ください。');
+                showImportIntegrityStatus(
+                    '<strong>⚠ インポートが正常に完了していません</strong><br><br>' +
+                    'インポートデータを保存できませんでした。<br>' +
+                    '通信状態を確認して、同じファイルを再度インポートしてください。',
+                    'error'
+                );
             }
         };
 
@@ -845,35 +905,45 @@
                 return alert('対応形式は CSV / Excel (.xlsx, .xls) です。');
             }
 
+            setPickListImporting(true);
+            importIntegrityStatus.classList.add('hidden');
             const reader = new FileReader();
+            reader.onerror = () => {
+                setPickListImporting(false);
+                showImportIntegrityStatus('ファイルを読み込めませんでした。ファイルを確認して再度インポートしてください。', 'error');
+            };
             reader.onload = async (e) => {
-                if (isExcel) {
-                    if (typeof XLSX === 'undefined') {
-                        return alert('Excel読込ライブラリの読み込みに失敗しました。');
-                    }
-                    try {
-                        const workbook = XLSX.read(e.target.result, { type: 'array' });
-                        const firstSheetName = workbook.SheetNames[0];
-                        if (!firstSheetName) {
-                            return alert('Excelファイルにシートがありません。');
+                try {
+                    if (isExcel) {
+                        if (typeof XLSX === 'undefined') {
+                            return alert('Excel読込ライブラリの読み込みに失敗しました。');
                         }
-                        const firstSheet = workbook.Sheets[firstSheetName];
-                        const rows = XLSX.utils.sheet_to_json(firstSheet, {
-                            header: 1,
-                            raw: false,
-                            defval: ''
-                        });
-                        await processImportedRows(rows, format, file);
-                    } catch (err) {
-                        console.error('Excelファイルの解析に失敗しました:', err);
-                        alert('Excelファイルの読み込みに失敗しました。ファイル形式をご確認ください。');
+                        try {
+                            const workbook = XLSX.read(e.target.result, { type: 'array' });
+                            const firstSheetName = workbook.SheetNames[0];
+                            if (!firstSheetName) {
+                                return alert('Excelファイルにシートがありません。');
+                            }
+                            const firstSheet = workbook.Sheets[firstSheetName];
+                            const rows = XLSX.utils.sheet_to_json(firstSheet, {
+                                header: 1,
+                                raw: false,
+                                defval: ''
+                            });
+                            await processImportedRows(rows, format, file);
+                        } catch (err) {
+                            console.error('Excelファイルの解析に失敗しました:', err);
+                            alert('Excelファイルの読み込みに失敗しました。ファイル形式をご確認ください。');
+                        }
+                        return;
                     }
-                    return;
-                }
 
-                const text = e.target.result;
-                const lines = text.split(/\r?\n/).filter(x => x.trim());
-                await processImportedRows(lines, format, file);
+                    const text = e.target.result;
+                    const lines = text.split(/\r?\n/).filter(x => x.trim());
+                    await processImportedRows(lines, format, file);
+                } finally {
+                    setPickListImporting(false);
+                }
             };
             if (isExcel) {
                 reader.readAsArrayBuffer(file);
